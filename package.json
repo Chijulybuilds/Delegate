@@ -18,7 +18,10 @@
     "test": "npm run test -w @delegate/api",
     "test:e2e": "npm run build && playwright test",
     "admin:hash": "npm run admin:hash -w @delegate/api --",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "predev": "node scripts/doctor.mjs dev",
+    "prebuild": "node scripts/doctor.mjs build",
+    "prestart": "node scripts/doctor.mjs start"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
