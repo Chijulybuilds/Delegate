@@ -1,0 +1,28 @@
+{
+  "name": "delegate",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Delegate — the high-tempo execution engine for lean teams.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c gray,blue \"npm:dev -w @delegate/api\" \"npm:dev -w @delegate/web\"",
+    "build": "npm run build -w @delegate/api && npm run build -w @delegate/web",
+    "start": "node apps/api/dist/index.js",
+    "typecheck": "npm run typecheck -w @delegate/shared && npm run typecheck -w @delegate/api && npm run typecheck -w @delegate/web",
+    "test": "npm run test -w @delegate/api",
+    "test:e2e": "npm run build && playwright test",
+    "admin:hash": "npm run admin:hash -w @delegate/api --",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "concurrently": "^9.2.5",
+    "typescript": "~5.9.3"
+  }
+}

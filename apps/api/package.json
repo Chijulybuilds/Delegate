@@ -1,0 +1,40 @@
+{
+  "name": "@delegate/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/dev.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "admin:hash": "tsx scripts/hash-password.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@supabase/supabase-js": "^2.119.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "jose": "^6.0.11",
+    "multer": "^2.0.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@delegate/shared": "*",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.20.5",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.4",
+    "tsup": "^8.5.1",
+    "tsx": "^4.20.6",
+    "vitest": "^3.2.7"
+  }
+}
