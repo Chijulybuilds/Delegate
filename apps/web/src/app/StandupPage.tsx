@@ -31,7 +31,7 @@ function Block({ title, tone, rows, empty, render }: { title: string; tone: stri
   );
 }
 
-export default function StandupPage() {
+export default function StandupPage({ embedded = false }: { embedded?: boolean }) {
   const { data, isLoading } = useStandup();
   const toast = useToast();
 
@@ -49,8 +49,8 @@ export default function StandupPage() {
     <div>
       <div className="no-print">
         <PageHeader
-          title="Standup-in-a-Box"
-          subtitle="Compiled automatically from the ledger. Emailed to managers at 8:00 AM when email is configured."
+          title={embedded ? '' : 'Standup-in-a-Box'}
+          subtitle={embedded ? 'Compiled from the ledger. Sent every morning to Slack/Teams, WhatsApp and email when connected.' : 'Compiled automatically from the ledger. Emailed to managers at 8:00 AM when email is configured.'}
           actions={
             <>
               <Button variant="outline" onClick={copy} disabled={!data}>

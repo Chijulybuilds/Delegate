@@ -23,6 +23,7 @@
     "helmet": "^8.1.0",
     "jose": "^6.0.11",
     "multer": "^2.0.2",
+    "stripe": "^18.5.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

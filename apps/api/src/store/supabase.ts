@@ -1,24 +1,32 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type {
-  Department,
-  LedgerEvent,
-  Member,
-  Organization,
-  Profile,
-  Task,
-  TaskComment,
-  TaskProof,
-  TaskStatus,
+import {
+  TASK_STATUSES,
+  withDefaultSettings,
+  type AppNotification,
+  type Department,
+  type IntegrationProvider,
+  type LedgerEvent,
+  type Member,
+  type Organization,
+  type OutboundMessage,
+  type Playbook,
+  type Profile,
+  type Subscription,
+  type Task,
+  type TaskComment,
+  type TaskProof,
+  type TaskStatus,
 } from '@delegate/shared';
-import { TASK_STATUSES } from '@delegate/shared';
 import { HttpError, notFound } from '../lib/errors.js';
-import type { MembershipRecord, NewTask, Store, TaskPatch } from './types.js';
+import type { IntegrationRecord, MembershipRecord, NewTask, Store, TaskPatch } from './types.js';
 
 type Row = Record<string, unknown>;
+type DbError = { message: string; code?: string } | null;
 
 const toCamelKey = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 const toSnakeKey = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
+/** Top-level keys only: JSON columns (settings, config, items, meta) keep their own casing. */
 function camel<T>(row: Row): T {
   const out: Row = {};
   for (const [k, v] of Object.entries(row)) out[toCamelKey(k)] = v;
@@ -30,7 +38,7 @@ function snake(obj: Row): Row {
   return out;
 }
 
-function check<T>(result: { data: T; error: { message: string; code?: string } | null }, context: string): T {
+function check<T>(result: { data: T; error: DbError }, context: string): T {
   if (result.error) {
     console.error(`[supabase] ${context}:`, result.error);
     if (result.error.code === '23505') throw new HttpError(409, 'That record already exists', 'conflict');
@@ -39,9 +47,28 @@ function check<T>(result: { data: T; error: { message: string; code?: string } |
   return result.data;
 }
 
-function rows(result: { data: Row[] | null; error: { message: string; code?: string } | null }, context: string): Row[] {
+/** For `.single()` inserts/updates: error → HttpError, and a guaranteed row. */
+function one(result: { data: Row | null; error: DbError }, context: string): Row {
+  const data = check(result, context);
+  if (!data) throw new HttpError(500, `Database returned nothing while ${context}`, 'db_error');
+  return data;
+}
+
+function rows(result: { data: Row[] | null; error: DbError }, context: string): Row[] {
   return check(result, context) ?? [];
 }
+
+const toOrg = (r: Row) => {
+  const o = camel<Organization & { taskSeq?: number }>(r);
+  delete o.taskSeq;
+  return { ...o, settings: withDefaultSettings(o.settings) } as Organization;
+};
+const toTask = (r: Row) => {
+  const t = camel<Task & { occurrenceKey?: string }>(r);
+  delete t.occurrenceKey;
+  return t as Task;
+};
+const toEvent = (r: Row): LedgerEvent => ({ ...camel<LedgerEvent>(r), id: String(r.id) });
 
 /** Production store backed by Supabase Postgres + Storage (service-role client, server-side only). */
 export class SupabaseStore implements Store {
@@ -53,9 +80,7 @@ export class SupabaseStore implements Store {
     serviceRoleKey: string,
     private bucket: string,
   ) {
-    this.db = createClient(url, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    this.db = createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   }
 
   // Profiles ---------------------------------------------------------------
@@ -64,42 +89,39 @@ export class SupabaseStore implements Store {
     return data ? camel<Profile>(data) : null;
   }
   async getProfileByEmail(email: string) {
-    const data = check(
-      await this.db.from('profiles').select('*').ilike('email', email).limit(1).maybeSingle(),
-      'loading profile by email',
-    );
+    const data = check(await this.db.from('profiles').select('*').ilike('email', email).limit(1).maybeSingle(), 'loading profile by email');
+    return data ? camel<Profile>(data) : null;
+  }
+  async getProfileByPhone(phone: string) {
+    const data = check(await this.db.from('profiles').select('*').eq('phone', phone).limit(1).maybeSingle(), 'loading profile by phone');
     return data ? camel<Profile>(data) : null;
   }
   async upsertProfile(input: { id: string; email: string; fullName: string; avatarUrl: string | null }) {
-    const data = check(
-      await this.db.from('profiles').upsert(snake(input), { onConflict: 'id' }).select('*').single(),
-      'saving profile',
-    );
+    const data = check(await this.db.from('profiles').upsert(snake(input), { onConflict: 'id' }).select('*').single(), 'saving profile');
     return camel<Profile>(data);
   }
   async listProfiles() {
-    const data = rows(await this.db.from('profiles').select('*').order('created_at', { ascending: false }), 'listing profiles');
-    return data.map((r) => camel<Profile>(r));
+    return rows(await this.db.from('profiles').select('*').order('created_at', { ascending: false }), 'listing profiles').map((r) => camel<Profile>(r));
   }
   async setProfileStatus(id: string, status: Profile['status']) {
     check(await this.db.from('profiles').update({ status }).eq('id', id), 'updating profile status');
   }
+  async setProfilePhone(id: string, phone: string | null) {
+    if (phone) check(await this.db.from('profiles').update({ phone: null }).eq('phone', phone).neq('id', id), 'releasing phone');
+    check(await this.db.from('profiles').update({ phone }).eq('id', id), 'saving phone');
+  }
 
   // Organizations ----------------------------------------------------------
-  async createOrg(input: Pick<Organization, 'name' | 'slug' | 'inviteCode' | 'timezone'>) {
-    const data = check(await this.db.from('organizations').insert(snake(input)).select('*').single(), 'creating workspace');
-    return camel<Organization>(data);
+  async createOrg(input: Pick<Organization, 'name' | 'slug' | 'inviteCode' | 'timezone' | 'settings'>) {
+    return toOrg(one(await this.db.from('organizations').insert(snake(input)).select('*').single(), 'creating workspace'));
   }
   async getOrg(id: string) {
     const data = check(await this.db.from('organizations').select('*').eq('id', id).maybeSingle(), 'loading workspace');
-    return data ? camel<Organization>(data) : null;
+    return data ? toOrg(data) : null;
   }
   async getOrgByInviteCode(code: string) {
-    const data = check(
-      await this.db.from('organizations').select('*').eq('invite_code', code.toUpperCase()).maybeSingle(),
-      'loading workspace by invite',
-    );
-    return data ? camel<Organization>(data) : null;
+    const data = check(await this.db.from('organizations').select('*').eq('invite_code', code.toUpperCase()).maybeSingle(), 'loading workspace by invite');
+    return data ? toOrg(data) : null;
   }
   async slugExists(slug: string) {
     const { count, error } = await this.db.from('organizations').select('id', { count: 'exact', head: true }).eq('slug', slug);
@@ -107,31 +129,23 @@ export class SupabaseStore implements Store {
     return (count ?? 0) > 0;
   }
   async listOrgs() {
-    const data = rows(await this.db.from('organizations').select('*').order('created_at', { ascending: false }), 'listing workspaces');
-    return data.map((r) => camel<Organization>(r));
+    return rows(await this.db.from('organizations').select('*').order('created_at', { ascending: false }), 'listing workspaces').map(toOrg);
   }
-  async updateOrg(id: string, patch: Partial<Pick<Organization, 'name' | 'status' | 'plan' | 'inviteCode' | 'timezone'>>) {
-    const data = check(
-      await this.db.from('organizations').update(snake(patch)).eq('id', id).select('*').maybeSingle(),
-      'updating workspace',
-    );
+  async updateOrg(id: string, patch: Partial<Pick<Organization, 'name' | 'status' | 'plan' | 'inviteCode' | 'timezone' | 'settings'>>) {
+    const data = check(await this.db.from('organizations').update(snake(patch)).eq('id', id).select('*').maybeSingle(), 'updating workspace');
     if (!data) throw notFound('Workspace not found');
-    return camel<Organization>(data);
+    return toOrg(data);
   }
 
   // Memberships ------------------------------------------------------------
   async getMembershipForUser(userId: string) {
-    const data = check(
-      await this.db.from('memberships').select('*').eq('user_id', userId).order('joined_at').limit(1).maybeSingle(),
-      'loading membership',
-    );
+    const data = check(await this.db.from('memberships').select('*').eq('user_id', userId).order('joined_at').limit(1).maybeSingle(), 'loading membership');
     return data ? camel<MembershipRecord>(data) : null;
   }
   async listMemberships(orgId?: string) {
     let q = this.db.from('memberships').select('*');
     if (orgId) q = q.eq('org_id', orgId);
-    const data = rows(await q, 'listing memberships');
-    return data.map((r) => camel<MembershipRecord>(r));
+    return rows(await q, 'listing memberships').map((r) => camel<MembershipRecord>(r));
   }
   async listMembers(orgId: string): Promise<Member[]> {
     const data = rows(
@@ -142,7 +156,7 @@ export class SupabaseStore implements Store {
         .order('joined_at'),
       'listing members',
     );
-    return (data as unknown as Array<Row & { profile: Row | null }>).map((r) => ({
+    return (data as Array<Row & { profile: Row | null }>).map((r) => ({
       userId: r.user_id as string,
       orgId: r.org_id as string,
       role: r.role as Member['role'],
@@ -162,41 +176,40 @@ export class SupabaseStore implements Store {
 
   // Departments --------------------------------------------------------------
   async listDepartments(orgId: string) {
-    const data = rows(await this.db.from('departments').select('*').eq('org_id', orgId).order('name'), 'listing departments');
-    return data.map((r) => camel<Department>(r));
+    return rows(await this.db.from('departments').select('*').eq('org_id', orgId).order('name'), 'listing departments').map((r) => camel<Department>(r));
   }
   async createDepartment(input: Pick<Department, 'orgId' | 'name' | 'color'>) {
-    const data = check(await this.db.from('departments').insert(snake(input)).select('*').single(), 'creating department');
-    return camel<Department>(data);
+    return camel<Department>(one(await this.db.from('departments').insert(snake(input)).select('*').single(), 'creating department'));
   }
 
   // Tasks ------------------------------------------------------------------
-  async listTasks(query: { orgId?: string }) {
+  async listTasks(query: { orgId?: string; statuses?: TaskStatus[] }) {
     let q = this.db.from('tasks').select('*').order('created_at', { ascending: false }).limit(5000);
     if (query.orgId) q = q.eq('org_id', query.orgId);
-    const data = rows(await q, 'listing tasks');
-    return data.map((r) => camel<Task>(r));
+    if (query.statuses) q = q.in('status', query.statuses);
+    return rows(await q, 'listing tasks').map(toTask);
   }
   async getTask(id: string) {
     const data = check(await this.db.from('tasks').select('*').eq('id', id).maybeSingle(), 'loading task');
-    return data ? camel<Task>(data) : null;
+    return data ? toTask(data) : null;
+  }
+  async getTaskBySeq(orgId: string, seq: number) {
+    const data = check(await this.db.from('tasks').select('*').eq('org_id', orgId).eq('seq', seq).maybeSingle(), 'loading task by reference');
+    return data ? toTask(data) : null;
   }
   async insertTask(input: NewTask) {
-    const data = check(await this.db.from('tasks').insert(snake({ ...input })).select('*').single(), 'creating task');
-    return camel<Task>(data);
+    // `seq` is assigned by the tasks_assign_seq trigger (per-workspace counter).
+    const res = await this.db.from('tasks').insert(snake({ ...input })).select('*').single();
+    if (res.error?.code === '23505' && input.occurrenceKey) throw new HttpError(409, 'Already created for this run', 'duplicate_occurrence');
+    return toTask(one(res, 'creating task'));
   }
   async updateTask(id: string, patch: TaskPatch) {
     const data = check(
-      await this.db
-        .from('tasks')
-        .update(snake({ ...patch, updatedAt: new Date().toISOString() }))
-        .eq('id', id)
-        .select('*')
-        .maybeSingle(),
+      await this.db.from('tasks').update(snake({ ...patch, updatedAt: new Date().toISOString() })).eq('id', id).select('*').maybeSingle(),
       'updating task',
     );
     if (!data) throw notFound('Task not found');
-    return camel<Task>(data);
+    return toTask(data);
   }
   async countTasksByStatus(orgId?: string) {
     const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
@@ -212,8 +225,7 @@ export class SupabaseStore implements Store {
     return counts;
   }
   async orgStats() {
-    const data = rows(await this.db.from('admin_org_stats').select('*'), 'loading workspace stats');
-    return data.map((r) => ({
+    return rows(await this.db.from('admin_org_stats').select('*'), 'loading workspace stats').map((r) => ({
       orgId: r.org_id as string,
       members: Number(r.members ?? 0),
       tasks: Number(r.tasks ?? 0),
@@ -223,38 +235,31 @@ export class SupabaseStore implements Store {
 
   // Proofs & comments --------------------------------------------------------
   async listProofs(taskId: string) {
-    const data = rows(await this.db.from('task_proofs').select('*').eq('task_id', taskId).order('created_at'), 'listing proofs');
-    return data.map((r) => camel<TaskProof>(r));
+    return rows(await this.db.from('task_proofs').select('*').eq('task_id', taskId).order('created_at'), 'listing proofs').map((r) => camel<TaskProof>(r));
   }
   async listProofsForOrg(orgId: string) {
-    const data = rows(await this.db.from('task_proofs').select('*').eq('org_id', orgId), 'listing proofs');
-    return data.map((r) => camel<TaskProof>(r));
+    return rows(await this.db.from('task_proofs').select('*').eq('org_id', orgId), 'listing proofs').map((r) => camel<TaskProof>(r));
   }
   async insertProof(input: Omit<TaskProof, 'id' | 'createdAt'>) {
-    const data = check(await this.db.from('task_proofs').insert(snake(input)).select('*').single(), 'saving proof');
-    return camel<TaskProof>(data);
+    return camel<TaskProof>(one(await this.db.from('task_proofs').insert(snake(input)).select('*').single(), 'saving proof'));
   }
   async listComments(taskId: string) {
-    const data = rows(await this.db.from('task_comments').select('*').eq('task_id', taskId).order('created_at'), 'listing comments');
-    return data.map((r) => camel<TaskComment>(r));
+    return rows(await this.db.from('task_comments').select('*').eq('task_id', taskId).order('created_at'), 'listing comments').map((r) => camel<TaskComment>(r));
   }
   async insertComment(input: Omit<TaskComment, 'id' | 'createdAt'>) {
-    const data = check(await this.db.from('task_comments').insert(snake(input)).select('*').single(), 'saving comment');
-    return camel<TaskComment>(data);
+    return camel<TaskComment>(one(await this.db.from('task_comments').insert(snake(input)).select('*').single(), 'saving comment'));
   }
 
   // Ledger -----------------------------------------------------------------
   async appendEvent(input: Omit<LedgerEvent, 'id' | 'createdAt'>) {
-    const data = check(await this.db.from('task_events').insert(snake(input)).select('*').single(), 'writing ledger event');
-    return { ...camel<LedgerEvent>(data), id: String(data.id) };
+    return toEvent(one(await this.db.from('task_events').insert(snake(input)).select('*').single(), 'writing ledger event'));
   }
   async listEvents(query: { orgId?: string; taskId?: string; before?: string; limit: number }) {
     let q = this.db.from('task_events').select('*').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(query.limit);
     if (query.orgId) q = q.eq('org_id', query.orgId);
     if (query.taskId) q = q.eq('task_id', query.taskId);
     if (query.before) q = q.lt('created_at', query.before);
-    const data = rows(await q, 'listing ledger');
-    return data.map((r) => ({ ...camel<LedgerEvent>(r), id: String(r.id) }));
+    return rows(await q, 'listing ledger').map(toEvent);
   }
   async countEventsSince(iso: string) {
     const { count, error } = await this.db.from('task_events').select('id', { count: 'exact', head: true }).gte('created_at', iso);
@@ -274,5 +279,139 @@ export class SupabaseStore implements Store {
     const { data, error } = await this.db.storage.from(this.bucket).createSignedUrl(path, 60);
     if (error || !data) return null;
     return { url: data.signedUrl };
+  }
+  async createUploadUrl(path: string) {
+    const { data, error } = await this.db.storage.from(this.bucket).createSignedUploadUrl(path);
+    if (error || !data) {
+      console.error('[supabase] signed upload url failed', error);
+      throw new HttpError(500, 'Could not prepare the upload', 'storage_error');
+    }
+    return { signedUrl: data.signedUrl, token: data.token, bucket: this.bucket };
+  }
+
+  // Billing ------------------------------------------------------------------
+  async getSubscription(orgId: string) {
+    const data = check(await this.db.from('subscriptions').select('*').eq('org_id', orgId).maybeSingle(), 'loading subscription');
+    return data ? camel<Subscription>(data) : null;
+  }
+  async listSubscriptions() {
+    return rows(await this.db.from('subscriptions').select('*'), 'listing subscriptions').map((r) => camel<Subscription>(r));
+  }
+  async upsertSubscription(sub: Subscription) {
+    return camel<Subscription>(one(await this.db.from('subscriptions').upsert(snake({ ...sub }), { onConflict: 'org_id' }).select('*').single(), 'saving subscription'));
+  }
+  async findSubscription(by: 'customer' | 'subscription', providerId: string) {
+    const column = by === 'customer' ? 'provider_customer_id' : 'provider_subscription_id';
+    const data = check(await this.db.from('subscriptions').select('*').eq(column, providerId).limit(1).maybeSingle(), 'finding subscription');
+    return data ? camel<Subscription>(data) : null;
+  }
+  async recordWebhookEvent(provider: string, eventId: string) {
+    const { error } = await this.db.from('webhook_events').insert({ provider, event_id: eventId });
+    if (!error) return true;
+    if (error.code === '23505') return false;
+    console.error('[supabase] webhook dedupe failed', error);
+    throw new HttpError(500, 'Database error while recording webhook', 'db_error');
+  }
+
+  // Integrations --------------------------------------------------------------
+  async listIntegrations(orgId: string) {
+    return rows(await this.db.from('integrations').select('*').eq('org_id', orgId), 'listing integrations').map((r) => camel<IntegrationRecord>(r));
+  }
+  async getIntegration(id: string) {
+    const data = check(await this.db.from('integrations').select('*').eq('id', id).maybeSingle(), 'loading integration');
+    return data ? camel<IntegrationRecord>(data) : null;
+  }
+  async getIntegrationFor(orgId: string, provider: IntegrationProvider) {
+    const data = check(await this.db.from('integrations').select('*').eq('org_id', orgId).eq('provider', provider).maybeSingle(), 'loading integration');
+    return data ? camel<IntegrationRecord>(data) : null;
+  }
+  async findIntegrationByConfig(provider: IntegrationProvider, key: string, value: string) {
+    if (!/^[a-zA-Z]+$/.test(key)) throw new HttpError(500, 'Invalid integration lookup', 'bad_lookup');
+    const data = check(
+      await this.db.from('integrations').select('*').eq('provider', provider).eq(`config->>${key}`, value).limit(1).maybeSingle(),
+      'finding integration',
+    );
+    return data ? camel<IntegrationRecord>(data) : null;
+  }
+  async saveIntegration(rec: Omit<IntegrationRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) {
+    const payload = snake({ ...rec, updatedAt: new Date().toISOString() });
+    const data = check(await this.db.from('integrations').upsert(payload, { onConflict: 'org_id,provider' }).select('*').single(), 'saving integration');
+    return camel<IntegrationRecord>(data);
+  }
+  async deleteIntegration(id: string) {
+    check(await this.db.from('integrations').delete().eq('id', id), 'removing integration');
+  }
+  async logOutbound(msg: Omit<OutboundMessage, 'id' | 'createdAt'>) {
+    const { error } = await this.db.from('outbound_messages').insert(snake({ ...msg }));
+    if (error) console.error('[supabase] could not log outbound message', error);
+  }
+  async listOutbound(orgId: string, limit: number) {
+    return rows(
+      await this.db.from('outbound_messages').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).limit(limit),
+      'listing deliveries',
+    ).map((r) => camel<OutboundMessage>(r));
+  }
+
+  // Phone linking ---------------------------------------------------------------
+  async createLinkCode(input: { code: string; userId: string; orgId: string; expiresAt: string }) {
+    check(await this.db.from('link_codes').delete().eq('user_id', input.userId), 'clearing link codes');
+    check(await this.db.from('link_codes').insert(snake(input)), 'creating link code');
+  }
+  async getActiveLinkCode(userId: string) {
+    const data = check(
+      await this.db.from('link_codes').select('code, expires_at').eq('user_id', userId).is('used_at', null).gt('expires_at', new Date().toISOString()).maybeSingle(),
+      'loading link code',
+    );
+    return data ? { code: data.code as string, expiresAt: data.expires_at as string } : null;
+  }
+  async consumeLinkCode(code: string) {
+    const data = check(
+      await this.db
+        .from('link_codes')
+        .update({ used_at: new Date().toISOString() })
+        .eq('code', code.toUpperCase())
+        .is('used_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .select('user_id, org_id')
+        .maybeSingle(),
+      'using link code',
+    );
+    return data ? { userId: data.user_id as string, orgId: data.org_id as string } : null;
+  }
+
+  // Notifications -----------------------------------------------------------------
+  async insertNotifications(list: Array<Omit<AppNotification, 'id' | 'createdAt' | 'readAt'>>) {
+    if (!list.length) return;
+    check(await this.db.from('notifications').insert(list.map((n) => snake({ ...n }))), 'saving notifications');
+  }
+  async listNotifications(userId: string, limit: number) {
+    return rows(
+      await this.db.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit),
+      'listing notifications',
+    ).map((r) => camel<AppNotification>(r));
+  }
+  async markNotificationsRead(userId: string, ids: string[] | 'all') {
+    let q = this.db.from('notifications').update({ read_at: new Date().toISOString() }).eq('user_id', userId).is('read_at', null);
+    if (ids !== 'all') q = q.in('id', ids);
+    check(await q, 'marking notifications read');
+  }
+
+  // Playbooks -----------------------------------------------------------------------
+  async listPlaybooks(orgId?: string) {
+    let q = this.db.from('playbooks').select('*').order('created_at');
+    if (orgId) q = q.eq('org_id', orgId);
+    return rows(await q, 'listing playbooks').map((r) => camel<Playbook>(r));
+  }
+  async getPlaybook(id: string) {
+    const data = check(await this.db.from('playbooks').select('*').eq('id', id).maybeSingle(), 'loading playbook');
+    return data ? camel<Playbook>(data) : null;
+  }
+  async savePlaybook(p: Omit<Playbook, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) {
+    const payload = snake({ ...p, updatedAt: new Date().toISOString() });
+    const q = p.id ? this.db.from('playbooks').update(payload).eq('id', p.id) : this.db.from('playbooks').insert(payload);
+    return camel<Playbook>(one(await q.select('*').single(), 'saving playbook'));
+  }
+  async deletePlaybook(id: string) {
+    check(await this.db.from('playbooks').delete().eq('id', id), 'removing playbook');
   }
 }

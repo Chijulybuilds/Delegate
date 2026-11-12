@@ -50,7 +50,7 @@ test.describe.serial('Accountability loop: Red → Amber → Green → Blue ✓'
     await expect(card(page, title)).toHaveCount(1);
     await expect(card(page, title)).toHaveAttribute('data-status', 'approved');
 
-    await page.getByRole('link', { name: 'Heartbeat' }).click();
+    await page.getByRole('link', { name: 'Activity' }).click();
     await expect(page.getByTestId('heartbeat-list').first()).toContainText(`audited and closed “${title}”`);
     await expect(page.getByTestId('heartbeat-list').first()).toContainText(`Tunde Bakare submitted proof “${title}”`);
   });
@@ -109,10 +109,10 @@ test.describe('Collaboration', () => {
 
   test('Velocity Pulse and Standup-in-a-Box render from the ledger', async ({ page }) => {
     await loginAs(page, 'demo-ada');
-    await page.getByRole('link', { name: 'Velocity' }).click();
+    await page.getByRole('link', { name: 'Insights' }).click();
     await expect(page.getByTestId('kpi-completed')).toBeVisible();
     await expect(page.getByTestId('velocity-table').locator('tbody tr')).toHaveCount(6);
-    await page.getByRole('link', { name: 'Standup' }).click();
+    await page.getByRole('tab', { name: 'Standup' }).click();
     const brief = page.getByTestId('standup-brief');
     await expect(brief).toContainText('Blockers');
     await expect(brief).toContainText('Negotiate courier contract renewal');
@@ -146,7 +146,7 @@ test.describe('Sign-up and onboarding', () => {
     await page.getByTestId('task-submit').click();
     await expect(card(page, 'Map the delivery routes for December')).toBeVisible();
 
-    await page.getByRole('link', { name: 'Team' }).click();
+    await page.getByRole('link', { name: 'Team', exact: true }).click();
     await expect(page.getByTestId('invite-code')).toHaveText(/^NORTHS-[A-Z0-9]{4}$/);
   });
 

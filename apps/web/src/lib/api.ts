@@ -22,7 +22,7 @@ export function configureApi(opts: { getToken: TokenGetter; onUnauthorized: () =
 }
 
 interface RequestOpts {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   /** Explicit token (admin console). Defaults to the signed-in user's session. */
   token?: string | null;
@@ -63,4 +63,6 @@ export const api = {
   get: <T>(path: string, token?: string | null) => request<T>(path, { token }),
   post: <T>(path: string, body?: unknown, token?: string | null) => request<T>(path, { method: 'POST', body, token }),
   patch: <T>(path: string, body?: unknown, token?: string | null) => request<T>(path, { method: 'PATCH', body, token }),
+  put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
+  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };

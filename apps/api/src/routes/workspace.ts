@@ -2,10 +2,9 @@ import { Router, type Request } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { MEMBER_ROLES, TASK_PRIORITIES, type TransitionAction } from '@delegate/shared';
-import { requireMember, requireUser } from '../auth/middleware.js';
-import type { UserTokenVerifier } from '../auth/tokens.js';
 import { badRequest } from '../lib/errors.js';
 import { standupToText, type MetricsService } from '../services/metrics.js';
+import type { BillingService } from '../services/billing.js';
 import type { Ctx, WorkspaceService } from '../services/workspace.js';
 import type { Store } from '../store/types.js';
 
@@ -37,35 +36,54 @@ const transition = z.object({
         note: z.string().max(2000).nullable().optional(),
         filePath: z.string().max(400).nullable().optional(),
         fileName: z.string().max(200).nullable().optional(),
+        attestation: z.string().max(4000).nullable().optional(),
       }),
     )
     .max(10)
     .optional(),
 });
 
+/** Mounted behind requireUser + requireMember. */
 export function workspaceRoutes(deps: {
   store: Store;
-  verifier: UserTokenVerifier;
   workspace: WorkspaceService;
   metrics: MetricsService;
+  billing: BillingService;
 }) {
-  const { store, workspace, metrics } = deps;
+  const { store, workspace, metrics, billing } = deps;
   const r = Router();
-  r.use(requireUser(store, deps.verifier), requireMember(store));
 
   /* ------------------------------ Workspace ------------------------------ */
 
   r.get('/workspace', async (req, res) => {
     const { orgId, org, role, departmentId } = req.member!;
-    const [members, departments] = await Promise.all([store.listMembers(orgId), store.listDepartments(orgId)]);
-    res.json({ org, members, departments, me: { userId: req.user!.id, role, departmentId } });
+    const [members, departments, entitlements] = await Promise.all([store.listMembers(orgId), store.listDepartments(orgId), billing.entitlements(orgId)]);
+    res.json({ org, members, departments, entitlements, me: { userId: req.user!.id, role, departmentId } });
   });
 
   r.patch('/workspace', async (req, res) => {
     const body = z
-      .object({ name: z.string().trim().min(2).max(60).optional(), timezone: z.string().max(64).optional(), regenerateInvite: z.boolean().optional() })
+      .object({
+        name: z.string().trim().min(2).max(60).optional(),
+        timezone: z.string().max(64).optional(),
+        regenerateInvite: z.boolean().optional(),
+        settings: z
+          .object({
+            escalation: z
+              .object({
+                enabled: z.boolean(),
+                blockedManagerHours: z.number().min(0.5).max(168),
+                blockedOwnerHours: z.number().min(1).max(336),
+                overdueHours: z.number().min(0).max(168),
+              })
+              .partial()
+              .optional(),
+            digest: z.object({ enabled: z.boolean(), hour: z.number().int().min(0).max(23) }).partial().optional(),
+          })
+          .optional(),
+      })
       .parse(req.body);
-    res.json({ org: await workspace.updateOrg(ctxOf(req), body) });
+    res.json({ org: await workspace.updateOrg(ctxOf(req), body as Parameters<WorkspaceService['updateOrg']>[1]) });
   });
 
   r.patch('/members/:userId', async (req, res) => {
@@ -111,6 +129,12 @@ export function workspaceRoutes(deps: {
     res.status(201).json({ comment: await workspace.comment(ctxOf(req), String(req.params.id), body.body) });
   });
 
+  /** Step 1 of a proof upload: direct-to-storage URL (Supabase) or "send it to the API" (demo). */
+  r.post('/tasks/:id/proof-uploads', async (req, res) => {
+    const body = z.object({ fileName: z.string().min(1).max(200), size: z.number().int().min(1) }).parse(req.body);
+    res.json(await workspace.prepareProofUpload(ctxOf(req), String(req.params.id), body.fileName, body.size));
+  });
+
   r.post('/tasks/:id/proof-files', upload.single('file'), async (req, res) => {
     if (!req.file) throw badRequest('Choose a file to upload');
     res.status(201).json(await workspace.uploadProofFile(ctxOf(req), String(req.params.id), req.file));
@@ -139,7 +163,8 @@ export function workspaceRoutes(deps: {
 
   r.get('/metrics/velocity', async (req, res) => {
     const q = z.object({ days: z.coerce.number().int().refine((d) => [7, 14, 30].includes(d), 'days must be 7, 14 or 30').default(14) }).parse(req.query);
-    res.json(await metrics.velocity(req.member!.orgId, q.days));
+    const ent = await billing.entitlements(req.member!.orgId);
+    res.json(await metrics.velocity(req.member!.orgId, Math.min(q.days, ent.velocityDays)));
   });
 
   r.get('/standup', async (req, res) => {

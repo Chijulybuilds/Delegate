@@ -1,18 +1,24 @@
-import type {
-  Department,
-  LedgerEvent,
-  Member,
-  Organization,
-  Profile,
-  Task,
-  TaskComment,
-  TaskProof,
-  TaskStatus,
+import {
+  DEFAULT_ORG_SETTINGS,
+  TASK_STATUSES,
+  type AppNotification,
+  type Department,
+  type IntegrationProvider,
+  type LedgerEvent,
+  type Member,
+  type Organization,
+  type OutboundMessage,
+  type Playbook,
+  type Profile,
+  type Subscription,
+  type Task,
+  type TaskComment,
+  type TaskProof,
+  type TaskStatus,
 } from '@delegate/shared';
-import { TASK_STATUSES } from '@delegate/shared';
-import { notFound } from '../lib/errors.js';
+import { HttpError, notFound } from '../lib/errors.js';
 import { uuid } from '../lib/ids.js';
-import type { MembershipRecord, NewTask, Store, TaskPatch } from './types.js';
+import type { IntegrationRecord, MembershipRecord, NewTask, Store, TaskPatch } from './types.js';
 
 const now = () => new Date().toISOString();
 const clone = <T>(v: T): T => structuredClone(v);
@@ -26,11 +32,20 @@ export class MemoryStore implements Store {
   memberships: MembershipRecord[] = [];
   departments = new Map<string, Department>();
   tasks = new Map<string, Task>();
+  occurrences = new Set<string>();
   proofs = new Map<string, TaskProof>();
   comments = new Map<string, TaskComment>();
   events: LedgerEvent[] = [];
   files = new Map<string, { data: Buffer; contentType: string }>();
+  subscriptions = new Map<string, Subscription>();
+  webhookEvents = new Set<string>();
+  integrations = new Map<string, IntegrationRecord>();
+  outbound: OutboundMessage[] = [];
+  linkCodes: Array<{ code: string; userId: string; orgId: string; expiresAt: string; usedAt: string | null }> = [];
+  notifications: AppNotification[] = [];
+  playbooks = new Map<string, Playbook>();
   private eventSeq = 0;
+  private taskSeq = new Map<string, number>();
 
   reset() {
     this.profiles.clear();
@@ -38,11 +53,20 @@ export class MemoryStore implements Store {
     this.memberships = [];
     this.departments.clear();
     this.tasks.clear();
+    this.occurrences.clear();
     this.proofs.clear();
     this.comments.clear();
     this.events = [];
     this.files.clear();
+    this.subscriptions.clear();
+    this.webhookEvents.clear();
+    this.integrations.clear();
+    this.outbound = [];
+    this.linkCodes = [];
+    this.notifications = [];
+    this.playbooks.clear();
     this.eventSeq = 0;
+    this.taskSeq.clear();
   }
 
   // Profiles ---------------------------------------------------------------
@@ -55,11 +79,15 @@ export class MemoryStore implements Store {
     const p = [...this.profiles.values()].find((x) => x.email.toLowerCase() === needle);
     return p ? clone(p) : null;
   }
+  async getProfileByPhone(phone: string) {
+    const p = [...this.profiles.values()].find((x) => x.phone === phone);
+    return p ? clone(p) : null;
+  }
   async upsertProfile(input: { id: string; email: string; fullName: string; avatarUrl: string | null }) {
     const existing = this.profiles.get(input.id);
     const next: Profile = existing
       ? { ...existing, email: input.email, fullName: input.fullName || existing.fullName, avatarUrl: input.avatarUrl ?? existing.avatarUrl }
-      : { ...input, status: 'active', createdAt: now() };
+      : { ...input, phone: null, status: 'active', createdAt: now() };
     this.profiles.set(input.id, next);
     return clone(next);
   }
@@ -71,9 +99,16 @@ export class MemoryStore implements Store {
     if (!p) throw notFound('User not found');
     p.status = status;
   }
+  async setProfilePhone(id: string, phone: string | null) {
+    const p = this.profiles.get(id);
+    if (!p) throw notFound('User not found');
+    // A phone belongs to one person: unlink it anywhere else first.
+    if (phone) for (const other of this.profiles.values()) if (other.phone === phone) other.phone = null;
+    p.phone = phone;
+  }
 
   // Organizations ----------------------------------------------------------
-  async createOrg(input: Pick<Organization, 'name' | 'slug' | 'inviteCode' | 'timezone'>) {
+  async createOrg(input: Pick<Organization, 'name' | 'slug' | 'inviteCode' | 'timezone' | 'settings'>) {
     const org: Organization = { id: uuid(), ...input, plan: 'starter', status: 'active', createdAt: now() };
     this.orgs.set(org.id, org);
     return clone(org);
@@ -92,7 +127,7 @@ export class MemoryStore implements Store {
   async listOrgs() {
     return [...this.orgs.values()].map(clone);
   }
-  async updateOrg(id: string, patch: Partial<Pick<Organization, 'name' | 'status' | 'plan' | 'inviteCode' | 'timezone'>>) {
+  async updateOrg(id: string, patch: Partial<Pick<Organization, 'name' | 'status' | 'plan' | 'inviteCode' | 'timezone' | 'settings'>>) {
     const o = this.orgs.get(id);
     if (!o) throw notFound('Workspace not found');
     Object.assign(o, patch);
@@ -145,9 +180,9 @@ export class MemoryStore implements Store {
   }
 
   // Tasks ------------------------------------------------------------------
-  async listTasks(query: { orgId?: string }) {
+  async listTasks(query: { orgId?: string; statuses?: TaskStatus[] }) {
     return [...this.tasks.values()]
-      .filter((t) => !query.orgId || t.orgId === query.orgId)
+      .filter((t) => (!query.orgId || t.orgId === query.orgId) && (!query.statuses || query.statuses.includes(t.status)))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(clone);
   }
@@ -155,9 +190,20 @@ export class MemoryStore implements Store {
     const t = this.tasks.get(id);
     return t ? clone(t) : null;
   }
+  async getTaskBySeq(orgId: string, seq: number) {
+    const t = [...this.tasks.values()].find((x) => x.orgId === orgId && x.seq === seq);
+    return t ? clone(t) : null;
+  }
   async insertTask(input: NewTask & { createdAt?: string }) {
-    const ts = input.createdAt ?? now();
-    const t: Task = { ...input, id: uuid(), createdAt: ts, updatedAt: ts };
+    const { occurrenceKey, createdAt, ...rest } = input;
+    if (occurrenceKey) {
+      if (this.occurrences.has(occurrenceKey)) throw new HttpError(409, 'Already created for this run', 'duplicate_occurrence');
+      this.occurrences.add(occurrenceKey);
+    }
+    const seq = (this.taskSeq.get(rest.orgId) ?? 0) + 1;
+    this.taskSeq.set(rest.orgId, seq);
+    const ts = createdAt ?? now();
+    const t: Task = { ...rest, id: uuid(), seq, createdAt: ts, updatedAt: ts };
     this.tasks.set(t.id, t);
     return clone(t);
   }
@@ -167,13 +213,11 @@ export class MemoryStore implements Store {
     Object.assign(t, patch, { updatedAt: now() });
     return clone(t);
   }
-
   async countTasksByStatus(orgId?: string) {
     const counts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
     for (const t of this.tasks.values()) if (!orgId || t.orgId === orgId) counts[t.status] += 1;
     return counts;
   }
-
   async orgStats() {
     return [...this.orgs.values()].map((o) => {
       const last = this.events.filter((e) => e.orgId === o.id).reduce<string | null>((acc, e) => (!acc || e.createdAt > acc ? e.createdAt : acc), null);
@@ -216,11 +260,7 @@ export class MemoryStore implements Store {
   // Ledger (append-only) ------------------------------------------------------
   async appendEvent(input: Omit<LedgerEvent, 'id' | 'createdAt'> & { createdAt?: string }) {
     this.eventSeq += 1;
-    const e: LedgerEvent = Object.freeze({
-      ...input,
-      id: String(this.eventSeq),
-      createdAt: input.createdAt ?? now(),
-    }) as LedgerEvent;
+    const e: LedgerEvent = Object.freeze({ ...input, id: String(this.eventSeq), createdAt: input.createdAt ?? now() }) as LedgerEvent;
     this.events.push(e);
     return clone(e);
   }
@@ -243,4 +283,129 @@ export class MemoryStore implements Store {
   async getFile(path: string) {
     return this.files.get(path) ?? null;
   }
+  async createUploadUrl() {
+    return null;
+  }
+
+  // Billing ------------------------------------------------------------------
+  async getSubscription(orgId: string) {
+    const s = this.subscriptions.get(orgId);
+    return s ? clone(s) : null;
+  }
+  async listSubscriptions() {
+    return [...this.subscriptions.values()].map(clone);
+  }
+  async upsertSubscription(sub: Subscription) {
+    this.subscriptions.set(sub.orgId, clone(sub));
+    return clone(sub);
+  }
+  async findSubscription(by: 'customer' | 'subscription', providerId: string) {
+    const s = [...this.subscriptions.values()].find((x) => (by === 'customer' ? x.providerCustomerId : x.providerSubscriptionId) === providerId);
+    return s ? clone(s) : null;
+  }
+  async recordWebhookEvent(provider: string, eventId: string) {
+    const key = `${provider}:${eventId}`;
+    if (this.webhookEvents.has(key)) return false;
+    this.webhookEvents.add(key);
+    return true;
+  }
+
+  // Integrations --------------------------------------------------------------
+  async listIntegrations(orgId: string) {
+    return [...this.integrations.values()].filter((i) => i.orgId === orgId).map(clone);
+  }
+  async getIntegration(id: string) {
+    const i = this.integrations.get(id);
+    return i ? clone(i) : null;
+  }
+  async getIntegrationFor(orgId: string, provider: IntegrationProvider) {
+    const i = [...this.integrations.values()].find((x) => x.orgId === orgId && x.provider === provider);
+    return i ? clone(i) : null;
+  }
+  async findIntegrationByConfig(provider: IntegrationProvider, key: string, value: string) {
+    const i = [...this.integrations.values()].find((x) => x.provider === provider && String(x.config[key] ?? '') === value);
+    return i ? clone(i) : null;
+  }
+  async saveIntegration(rec: Omit<IntegrationRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) {
+    const existing = rec.id ? this.integrations.get(rec.id) : [...this.integrations.values()].find((x) => x.orgId === rec.orgId && x.provider === rec.provider);
+    const saved: IntegrationRecord = {
+      ...rec,
+      id: existing?.id ?? uuid(),
+      createdAt: existing?.createdAt ?? now(),
+      updatedAt: now(),
+    };
+    this.integrations.set(saved.id, saved);
+    return clone(saved);
+  }
+  async deleteIntegration(id: string) {
+    this.integrations.delete(id);
+  }
+  async logOutbound(msg: Omit<OutboundMessage, 'id' | 'createdAt'>) {
+    this.outbound.push({ ...msg, id: uuid(), createdAt: now() });
+    if (this.outbound.length > 500) this.outbound.splice(0, this.outbound.length - 500);
+  }
+  async listOutbound(orgId: string, limit: number) {
+    return this.outbound
+      .filter((m) => m.orgId === orgId)
+      .slice(-limit)
+      .reverse()
+      .map(clone);
+  }
+
+  // Phone linking ---------------------------------------------------------------
+  async createLinkCode(input: { code: string; userId: string; orgId: string; expiresAt: string }) {
+    this.linkCodes = this.linkCodes.filter((c) => c.userId !== input.userId);
+    this.linkCodes.push({ ...input, usedAt: null });
+  }
+  async getActiveLinkCode(userId: string) {
+    const c = this.linkCodes.find((x) => x.userId === userId && !x.usedAt && x.expiresAt > now());
+    return c ? { code: c.code, expiresAt: c.expiresAt } : null;
+  }
+  async consumeLinkCode(code: string) {
+    const c = this.linkCodes.find((x) => x.code === code.toUpperCase() && !x.usedAt && x.expiresAt > now());
+    if (!c) return null;
+    c.usedAt = now();
+    return { userId: c.userId, orgId: c.orgId };
+  }
+
+  // Notifications -----------------------------------------------------------------
+  async insertNotifications(list: Array<Omit<AppNotification, 'id' | 'createdAt' | 'readAt'>>) {
+    for (const n of list) this.notifications.push({ ...n, id: uuid(), createdAt: now(), readAt: null });
+  }
+  async listNotifications(userId: string, limit: number) {
+    return this.notifications
+      .filter((n) => n.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+      .map(clone);
+  }
+  async markNotificationsRead(userId: string, ids: string[] | 'all') {
+    const ts = now();
+    for (const n of this.notifications) {
+      if (n.userId === userId && !n.readAt && (ids === 'all' || ids.includes(n.id))) n.readAt = ts;
+    }
+  }
+
+  // Playbooks -----------------------------------------------------------------------
+  async listPlaybooks(orgId?: string) {
+    return [...this.playbooks.values()]
+      .filter((p) => !orgId || p.orgId === orgId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map(clone);
+  }
+  async getPlaybook(id: string) {
+    const p = this.playbooks.get(id);
+    return p ? clone(p) : null;
+  }
+  async savePlaybook(p: Omit<Playbook, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) {
+    const existing = p.id ? this.playbooks.get(p.id) : undefined;
+    const saved: Playbook = { ...p, id: existing?.id ?? uuid(), createdAt: existing?.createdAt ?? now(), updatedAt: now() };
+    this.playbooks.set(saved.id, saved);
+    return clone(saved);
+  }
+  async deletePlaybook(id: string) {
+    this.playbooks.delete(id);
+  }
 }
+
+export const defaultSettings = () => clone(DEFAULT_ORG_SETTINGS);

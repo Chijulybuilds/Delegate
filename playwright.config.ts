@@ -42,6 +42,15 @@ export default defineConfig({
       ADMIN_EMAIL: '',
       ANTHROPIC_API_KEY: '',
       RESEND_API_KEY: '',
+      // Providers are simulated; no real Stripe / Paystack / Slack / Meta / Google calls.
+      SIMULATE_PROVIDERS: 'true',
+      STRIPE_SECRET_KEY: '',
+      PAYSTACK_SECRET_KEY: '',
+      SLACK_CLIENT_ID: '',
+      WHATSAPP_TOKEN: '',
+      GOOGLE_API_KEY: '',
+      // Deterministic runs: automations only fire when a test asks for them.
+      INTERNAL_SCHEDULER: 'false',
     },
   },
 });

@@ -1,89 +1,51 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
-import { useToast } from '../components/Toast';
-import { Avatar, Button, Card, Field, Input, Spinner } from '../components/ui';
-import { api } from '../lib/api';
-import { useAuth } from '../lib/auth';
+import { useSearchParams } from 'react-router';
+import { Spinner } from '../components/ui';
 import { PageHeader } from './AppShell';
 import { useWorkspace } from './data';
+import { AccountTab } from './settings/AccountTab';
+import { AutomationsTab } from './settings/AutomationsTab';
+import { BillingTab } from './settings/BillingTab';
+import { IntegrationsTab } from './settings/IntegrationsTab';
+import { WorkspaceTab } from './settings/WorkspaceTab';
+
+const TABS = [
+  { id: 'workspace', label: 'Workspace' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'billing', label: 'Billing' },
+  { id: 'automations', label: 'Automations' },
+  { id: 'account', label: 'Account' },
+] as const;
+type TabId = (typeof TABS)[number]['id'];
 
 export default function SettingsPage() {
-  const { data: ws, isLoading } = useWorkspace();
-  const { me, signOut, config } = useAuth();
-  const qc = useQueryClient();
-  const toast = useToast();
-  const [name, setName] = useState<string | null>(null);
-  const [timezone, setTimezone] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  if (isLoading || !ws || !me) return <Spinner className="m-8" />;
-  const isOwner = ws.me.role === 'owner';
-  const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [ws.org.timezone];
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await api.patch('/workspace', { ...(name !== null ? { name } : {}), ...(timezone !== null ? { timezone } : {}) });
-      await qc.invalidateQueries({ queryKey: ['workspace'] });
-      toast.success('Workspace saved');
-    } catch (err) {
-      toast.error(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const ws = useWorkspace();
+  const [params, setParams] = useSearchParams();
+  const tab = (TABS.find((t) => t.id === params.get('tab'))?.id ?? 'workspace') as TabId;
+  if (!ws.data) return <Spinner className="m-8" />;
 
   return (
     <div>
       <PageHeader title="Settings" />
-      <div className="grid max-w-4xl gap-4 px-4 pb-12 sm:px-8 lg:grid-cols-2">
-        <Card className="p-6">
-          <h2 className="text-[15px] font-medium">Workspace</h2>
-          <form onSubmit={save} className="mt-5 space-y-4">
-            <Field label="Name">
-              <Input value={name ?? ws.org.name} onChange={(e) => setName(e.target.value)} disabled={!isOwner} minLength={2} maxLength={60} />
-            </Field>
-            <Field label="Time zone" hint="Standup days and due times follow this zone.">
-              <select
-                className="h-11 w-full rounded-xl border border-line bg-paper px-3.5 text-sm"
-                value={timezone ?? ws.org.timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                disabled={ws.me.role === 'member'}
-              >
-                {zones.map((z) => (
-                  <option key={z} value={z}>
-                    {z}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <p className="text-xs text-faint">
-              Plan: <span className="font-medium capitalize text-ink-2">{ws.org.plan}</span>
-            </p>
-            {ws.me.role !== 'member' && (
-              <Button type="submit" loading={busy} disabled={name === null && timezone === null}>
-                Save changes
-              </Button>
-            )}
-          </form>
-        </Card>
-        <Card className="p-6">
-          <h2 className="text-[15px] font-medium">Your account</h2>
-          <div className="mt-5 flex items-center gap-3">
-            <Avatar name={me.profile.fullName} src={me.profile.avatarUrl} size={48} />
-            <div>
-              <p className="font-medium">{me.profile.fullName}</p>
-              <p className="text-sm text-mute">{me.profile.email}</p>
-            </div>
-          </div>
-          <p className="mt-5 text-sm text-mute">
-            Signed in with {config?.authMode === 'supabase' ? 'Google' : 'a demo session'}. Profile details come from your Google account.
-          </p>
-          <Button variant="outline" className="mt-5" onClick={() => signOut()}>
-            Sign out
-          </Button>
-        </Card>
+      <div className="scrollbar-none mb-6 flex gap-1 overflow-x-auto border-b border-line px-4 sm:px-8" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setParams({ tab: t.id }, { replace: true })}
+            className={`relative h-10 shrink-0 px-3 text-sm transition-colors ${tab === t.id ? 'font-medium text-ink' : 'text-mute hover:text-ink'}`}
+          >
+            {t.label}
+            {tab === t.id && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-ink" />}
+          </button>
+        ))}
+      </div>
+      <div className="px-4 pb-12 sm:px-8">
+        {tab === 'workspace' && <WorkspaceTab ws={ws.data} />}
+        {tab === 'integrations' && <IntegrationsTab ws={ws.data} />}
+        {tab === 'billing' && <BillingTab ws={ws.data} />}
+        {tab === 'automations' && <AutomationsTab ws={ws.data} />}
+        {tab === 'account' && <AccountTab ws={ws.data} />}
       </div>
     </div>
   );

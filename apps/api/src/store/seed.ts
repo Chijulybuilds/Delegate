@@ -1,4 +1,5 @@
-import type { EventType, MemberRole, Task, TaskPriority, TaskStatus } from '@delegate/shared';
+import { DEFAULT_ORG_SETTINGS, type EventType, type MemberRole, type Task, type TaskPriority, type TaskStatus } from '@delegate/shared';
+import { localParts } from '../services/automation.js';
 import type { MemoryStore } from './memory.js';
 
 export const DEMO_ORG_INVITE = 'LUMEN-2026';
@@ -85,7 +86,27 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
   const clampPast = (d: Date) => (d.getTime() > Date.now() - 60_000 ? new Date(Date.now() - 60_000) : d);
 
   const orgCreated = dayStart(30);
-  const org = await store.createOrg({ name: 'Lumen & Co.', slug: 'lumen', inviteCode: DEMO_ORG_INVITE, timezone: 'Africa/Lagos' });
+  const org = await store.createOrg({
+    name: 'Lumen & Co.',
+    slug: 'lumen',
+    inviteCode: DEMO_ORG_INVITE,
+    timezone: 'Africa/Lagos',
+    // The demo has already had its morning brief, so the tick doesn't fire one on every boot.
+    settings: { ...structuredClone(DEFAULT_ORG_SETTINGS), lastDigestOn: localParts(new Date(), 'Africa/Lagos').date },
+  });
+  await store.upsertSubscription({
+    orgId: org.id,
+    plan: 'team',
+    status: 'active',
+    provider: 'manual',
+    seats: DEMO_PERSONAS.length,
+    trialEndsAt: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    providerCustomerId: null,
+    providerSubscriptionId: null,
+    updatedAt: new Date().toISOString(),
+  });
   store.orgs.get(org.id)!.createdAt = iso(orgCreated);
   store.orgs.get(org.id)!.plan = 'team';
 
@@ -160,6 +181,11 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
 
     const task = await store.insertTask({
       orgId: org.id,
+      source: 'app',
+      blockedAt: bp.blocked ? iso(addH(started, 0.5)) : null,
+      escalationLevel: 0,
+      overdueAlertedAt: null,
+      playbookId: null,
       title: bp.title,
       description: bp.description,
       status: bp.status,
@@ -199,6 +225,8 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
           note: null,
           fileName: null,
           filePath: null,
+          source: 'manual',
+          verified: false,
           aiVerdict: null,
           aiReason: null,
           createdAt: iso(submitted),
@@ -213,6 +241,8 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
         note: bp.proof.note,
         fileName: null,
         filePath: null,
+        source: 'manual',
+        verified: false,
         aiVerdict: null,
         aiReason: null,
         createdAt: iso(submitted),
@@ -235,4 +265,22 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
   if (brand) {
     await store.insertComment({ taskId: brand.id, orgId: org.id, authorId: 'demo-sara', body: 'Tone of voice section is the one I would love a second pair of eyes on.', createdAt: brand.submittedAt ?? brand.createdAt });
   }
+
+  // A recurring playbook so the Playbooks page isn't empty in the demo.
+  await store.savePlaybook({
+    orgId: org.id,
+    name: 'Daily ops checklist',
+    active: true,
+    cadence: 'weekdays',
+    weekday: null,
+    monthDay: null,
+    timeOfDay: '08:00',
+    items: [
+      { id: 'pb-1', title: 'Reconcile yesterday’s payments', description: 'Match bank receipts to invoices; flag anything over ₦50,000.', assigneeId: 'demo-maya', priority: 'high', dueInHours: 4 },
+      { id: 'pb-2', title: 'Clear the support inbox to zero', description: 'Every ticket answered or escalated with a note.', assigneeId: 'demo-maya', priority: 'medium', dueInHours: 8 },
+      { id: 'pb-3', title: 'Check uptime and error dashboards', description: 'Screenshot of the dashboard as proof.', assigneeId: 'demo-leo', priority: 'medium', dueInHours: 2 },
+    ],
+    createdById: 'demo-ada',
+    lastRunOn: localParts(new Date(), 'Africa/Lagos').date,
+  });
 }

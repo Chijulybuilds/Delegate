@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { requireAdmin } from '../auth/middleware.js';
@@ -8,9 +8,7 @@ import { signAdminToken } from '../auth/tokens.js';
 import type { AppConfig } from '../config.js';
 import { HttpError, notFound, unauthorized } from '../lib/errors.js';
 import type { AdminService } from '../services/admin.js';
-import type { Mailer } from '../services/mail.js';
-import { standupToText, type MetricsService } from '../services/metrics.js';
-import type { Store } from '../store/types.js';
+import type { AutomationService } from '../services/automation.js';
 
 const sha = (s: string) => createHash('sha256').update(s).digest();
 const safeEqual = (a: string, b: string) => timingSafeEqual(sha(a), sha(b));
@@ -88,28 +86,24 @@ export function adminRoutes(deps: { config: AppConfig; admin: AdminService }) {
   return r;
 }
 
-/** Scheduled jobs (e.g. Vercel Cron or a crontab curl). Guarded by CRON_SECRET. */
-export function cronRoutes(deps: { config: AppConfig; store: Store; metrics: MetricsService; mailer: Mailer }) {
-  const { config, store, metrics, mailer } = deps;
+/**
+ * Scheduled automation tick: escalations, recurring playbooks, the morning digest.
+ * Vercel Cron calls it with GET + `Authorization: Bearer <CRON_SECRET>`; Supabase pg_cron or a
+ * crontab can POST with `x-cron-secret`. Idempotent, so any frequency is safe (every 10 min is ideal).
+ */
+export function cronRoutes(deps: { config: AppConfig; automation: AutomationService }) {
+  const { config, automation } = deps;
   const r = Router();
 
-  r.post('/standup', async (req, res) => {
+  const handler: RequestHandler = async (req, res) => {
     if (!config.cronSecret) throw notFound();
     const provided = req.headers['x-cron-secret'] ?? req.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (typeof provided !== 'string' || !safeEqual(provided, config.cronSecret)) throw new HttpError(401, 'Bad cron secret', 'unauthorized');
+    res.json(await automation.tick());
+  };
 
-    const orgs = (await store.listOrgs()).filter((o) => o.status === 'active');
-    let sent = 0;
-    for (const org of orgs) {
-      const brief = await metrics.standup(org.id);
-      const recipients = (await store.listMembers(org.id))
-        .filter((m) => m.role === 'owner' || m.role === 'manager')
-        .map((m) => m.email)
-        .filter(Boolean);
-      if (await mailer.send({ to: recipients, subject: `${org.name} · Standup for ${brief.date}`, text: standupToText(brief) })) sent++;
-    }
-    res.json({ workspaces: orgs.length, emailed: sent, mailEnabled: mailer.enabled });
-  });
-
+  r.get('/tick', handler);
+  r.post('/tick', handler);
+  r.post('/standup', handler); // backwards compatible alias
   return r;
 }

@@ -1,10 +1,12 @@
-import { availableActions, isManagerRole, TASK_PRIORITIES, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
-import { Download, FileText, Link2, Paperclip, Send, Sparkles, StickyNote, X } from 'lucide-react';
+import { availableActions, isManagerRole, TASK_PRIORITIES, taskRef, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
+import { Download, FileText, HardDrive, Link2, Paperclip, Send, ShieldCheck, Sparkles, StickyNote, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
 import { Avatar, Button, cx, Drawer, EASE, Field, Input, Modal, Select, Spinner, StatusBadge, Textarea } from '../components/ui';
 import { api, request } from '../lib/api';
+import { pickDriveFile } from '../lib/google';
+import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { clock, dueLabel, timeAgo, toLocalInput } from '../lib/format';
 import { memberName, useComment, useTaskDetail, useTransition, useUpdateTask, type WorkspaceData } from './data';
@@ -73,7 +75,17 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
   return (
     <>
       <div className="flex items-center justify-between border-b border-line px-6 py-4">
-        <StatusBadge status={task.status} />
+        <div className="flex items-center gap-2">
+          <StatusBadge status={task.status} />
+          <button
+            onClick={() => navigator.clipboard?.writeText(taskRef(task.seq)).then(() => toast.success(`${taskRef(task.seq)} copied — put it in a PR title to close this task from GitHub`))}
+            className="rounded-full border border-line px-2.5 py-0.5 font-mono text-xs text-mute hover:border-ink hover:text-ink"
+            title="Copy reference (use it in GitHub, Slack, Teams or WhatsApp)"
+            data-testid="drawer-ref"
+          >
+            {taskRef(task.seq)}
+          </button>
+        </div>
         <button onClick={onClose} className="grid size-9 place-items-center rounded-full hover:bg-black/5" aria-label="Close">
           <X className="size-[18px]" />
         </button>
@@ -279,6 +291,12 @@ function ProofItem({ proof, taskId, author }: { proof: TaskProof; taskId: string
           </button>
         )}
         {proof.note && <p className={cx('text-ink-2', proof.kind !== 'note' && 'mt-0.5')}>{proof.note}</p>}
+        {proof.source !== 'manual' && (
+          <span className={cx('mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium', proof.verified ? 'bg-s-approved-soft text-[#1A56C2]' : 'bg-milk text-mute')}>
+            {proof.verified ? <ShieldCheck className="size-3" /> : null}
+            {proof.verified ? 'Verified by' : 'From'} {proof.source === 'gdrive' ? 'Google Drive' : proof.source === 'github' ? 'GitHub' : 'WhatsApp'}
+          </span>
+        )}
         <p className="mt-1 text-xs text-faint">
           {author} · {timeAgo(proof.createdAt)}
         </p>
@@ -338,6 +356,8 @@ function Chat({ taskId, comments, ws }: { taskId: string; comments: Array<{ id: 
   );
 }
 
+type ProofDraft = { kind: 'link' | 'note' | 'file'; url?: string; note?: string; filePath?: string; fileName?: string; attestation?: string };
+
 function SubmitProofModal({ open, onClose, taskId }: { open: boolean; onClose: () => void; taskId: string }) {
   const { config } = useAuth();
   const transition = useTransition();
@@ -345,20 +365,47 @@ function SubmitProofModal({ open, onClose, taskId }: { open: boolean; onClose: (
   const [url, setUrl] = useState('');
   const [note, setNote] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [stage, setStage] = useState<'idle' | 'uploading' | 'verifying'>('idle');
+  const [drive, setDrive] = useState<{ attestation: string; preview: { fileName: string; note: string; verified: boolean } } | null>(null);
+  const [stage, setStage] = useState<'idle' | 'uploading' | 'drive' | 'verifying'>('idle');
+
+  const fromDrive = async () => {
+    if (!config?.integrations.googleDrive) return;
+    setStage('drive');
+    try {
+      const picked = await pickDriveFile(config.integrations.googleDrive);
+      if (picked) setDrive(await api.post(`/tasks/${taskId}/drive-proof`, { fileId: picked.fileId, accessToken: picked.accessToken }));
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setStage('idle');
+    }
+  };
+
+  /** Supabase: browser → Storage directly (no serverless body limits). Demo: through the API. */
+  const uploadFile = async (f: File): Promise<ProofDraft> => {
+    const prep = await api.post<{ mode: 'direct' | 'api'; filePath?: string; fileName?: string; token?: string; bucket?: string }>(`/tasks/${taskId}/proof-uploads`, { fileName: f.name, size: f.size });
+    if (prep.mode === 'direct' && config?.supabaseUrl && config.supabaseAnonKey) {
+      const sb = await getSupabase(config.supabaseUrl, config.supabaseAnonKey);
+      const { error } = await sb.storage.from(prep.bucket ?? 'proofs').uploadToSignedUrl(prep.filePath!, prep.token!, f, { contentType: f.type || 'application/octet-stream' });
+      if (error) throw new Error(`Upload failed: ${error.message}`);
+      return { kind: 'file', filePath: prep.filePath, fileName: prep.fileName };
+    }
+    const form = new FormData();
+    form.append('file', f);
+    const uploaded = await api.post<{ filePath: string; fileName: string }>(`/tasks/${taskId}/proof-files`, form);
+    return { kind: 'file', ...uploaded };
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const proofs: Array<{ kind: 'link' | 'note' | 'file'; url?: string; note?: string; filePath?: string; fileName?: string }> = [];
+    const proofs: ProofDraft[] = [];
     if (url.trim()) proofs.push({ kind: 'link', url: url.trim() });
     if (note.trim()) proofs.push({ kind: 'note', note: note.trim() });
+    if (drive) proofs.push({ kind: 'link', attestation: drive.attestation });
     try {
       if (file) {
         setStage('uploading');
-        const form = new FormData();
-        form.append('file', file);
-        const uploaded = await api.post<{ filePath: string; fileName: string }>(`/tasks/${taskId}/proof-files`, form);
-        proofs.push({ kind: 'file', ...uploaded });
+        proofs.push(await uploadFile(file));
       }
       if (proofs.length === 0) {
         toast.error('Add a link, a note or a file as proof');
@@ -368,10 +415,11 @@ function SubmitProofModal({ open, onClose, taskId }: { open: boolean; onClose: (
       setStage('verifying');
       const detail = await transition.mutateAsync({ id: taskId, action: 'submit', proofs });
       const verdict = detail.proofs.at(-1)?.aiVerdict;
-      toast.success(verdict === 'pass' ? 'Executed — AI check passed' : 'Executed — sent for audit');
+      toast.success(verdict === 'pass' ? 'Executed — AI check passed' : drive?.preview.verified ? 'Executed — verified with Google Drive' : 'Executed — sent for audit');
       setUrl('');
       setNote('');
       setFile(null);
+      setDrive(null);
       onClose();
     } catch (err) {
       toast.error(err);
@@ -381,7 +429,7 @@ function SubmitProofModal({ open, onClose, taskId }: { open: boolean; onClose: (
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Submit proof of work" description="Green needs evidence. Add at least one: a link, a note, or a file.">
+    <Modal open={open} onClose={onClose} title="Submit proof of work" description="Green needs evidence. Add at least one: a link, a note, a file or a Google Drive file.">
       <form onSubmit={submit} className="space-y-4" data-testid="proof-form">
         <Field label="Link" hint="Pull request, doc, recording, dashboard…">
           <Input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" data-testid="proof-url" />
@@ -389,11 +437,31 @@ function SubmitProofModal({ open, onClose, taskId }: { open: boolean; onClose: (
         <Field label="What did you deliver?">
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Shipped the v2 sequence, 5 emails live, UTM tags verified." maxLength={2000} data-testid="proof-note" />
         </Field>
-        <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-line-2 bg-milk px-4 py-3 text-sm text-mute hover:border-ink">
-          <Paperclip className="size-4" />
-          <span className="truncate">{file ? file.name : 'Attach a screenshot or file (max 10 MB)'}</span>
-          <input type="file" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-line-2 bg-milk px-4 py-3 text-sm text-mute hover:border-ink">
+            <Paperclip className="size-4 shrink-0" />
+            <span className="truncate">{file ? file.name : 'Attach a file (max 25 MB)'}</span>
+            <input type="file" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </label>
+          {config?.integrations.googleDrive ? (
+            <button type="button" onClick={fromDrive} disabled={stage !== 'idle'} className="flex items-center gap-3 rounded-2xl border border-dashed border-line-2 bg-milk px-4 py-3 text-left text-sm text-mute hover:border-ink disabled:opacity-60" data-testid="proof-drive">
+              <HardDrive className="size-4 shrink-0" />
+              <span className="truncate">{stage === 'drive' ? 'Opening Google Drive…' : drive ? drive.preview.fileName : 'Pick from Google Drive'}</span>
+            </button>
+          ) : (
+            <p className="flex items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-3 text-xs text-faint">
+              <HardDrive className="size-4 shrink-0" /> Google Drive proof switches on when your admin adds Google keys.
+            </p>
+          )}
+        </div>
+        {drive && (
+          <p className={cx('flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-sm', drive.preview.verified ? 'bg-s-approved-soft text-[#1A56C2]' : 'bg-s-active-soft text-[#6b4700]')}>
+            <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+            <span>
+              <span className="font-medium">{drive.preview.verified ? 'Verified with Google Drive.' : 'Attached, not verified.'}</span> {drive.preview.note}
+            </span>
+          </p>
+        )}
         <AnimatePresence>
           {stage === 'verifying' && config?.aiVerification && (
             <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="flex items-center gap-2 text-sm text-mute">
@@ -405,7 +473,7 @@ function SubmitProofModal({ open, onClose, taskId }: { open: boolean; onClose: (
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" loading={stage !== 'idle'} data-testid="proof-submit">
+          <Button type="submit" loading={stage === 'uploading' || stage === 'verifying'} disabled={stage === 'drive'} data-testid="proof-submit">
             Submit &amp; turn green
           </Button>
         </div>
@@ -498,20 +566,24 @@ function RequestChangesModal({ open, onClose, taskId }: { open: boolean; onClose
   );
 }
 
+const SOURCE_NAMES: Record<string, string> = { github: 'GitHub', slack: 'Slack', teams: 'Teams', whatsapp: 'WhatsApp', playbook: 'Playbook', gdrive: 'Google Drive' };
+
 export function describeEvent(e: LedgerEvent, ws: WorkspaceData, withTitle = false): string {
-  const who = memberName(ws.members, e.actorId);
+  const source = typeof e.meta.source === 'string' ? SOURCE_NAMES[e.meta.source] : undefined;
+  const who = e.actorId ? memberName(ws.members, e.actorId) : (source ?? 'Automation');
+  const via = e.actorId && source && source !== 'App' ? ` via ${source}` : '';
   const title = withTitle && typeof e.meta.title === 'string' ? ` “${e.meta.title}”` : '';
   switch (e.type) {
     case 'task.created':
-      return `${who} assigned${title} to ${memberName(ws.members, e.meta.assigneeId as string)}`;
+      return `${who} assigned${title} to ${memberName(ws.members, e.meta.assigneeId as string)}${via}`;
     case 'task.started':
-      return `${who} started${title}`;
+      return `${who} started${title}${via}`;
     case 'task.blocked':
-      return `${who} flagged a blocker${title}${e.meta.waitingOnId ? ` — waiting on ${memberName(ws.members, e.meta.waitingOnId as string)}` : ''}`;
+      return `${who} flagged a blocker${title}${e.meta.waitingOnId ? ` — waiting on ${memberName(ws.members, e.meta.waitingOnId as string)}` : ''}${via}`;
     case 'task.unblocked':
-      return `${who} unblocked${title}`;
+      return `${who} unblocked${title}${via}`;
     case 'task.submitted':
-      return `${who} submitted proof${title}${e.meta.aiVerdict === 'pass' ? ' · AI check passed' : ''}`;
+      return `${who} submitted proof${title}${e.meta.verified ? ' · verified' : ''}${e.meta.aiVerdict === 'pass' ? ' · AI check passed' : ''}${via}`;
     case 'task.approved':
       return `${who} audited and closed${title}`;
     case 'task.changes_requested':
@@ -520,12 +592,24 @@ export function describeEvent(e: LedgerEvent, ws: WorkspaceData, withTitle = fal
       return `${who} replied${title}`;
     case 'task.updated':
       return `${who} edited${title} (${((e.meta.fields as string[]) ?? []).join(', ')})`;
+    case 'task.escalated':
+      return `Escalated${title} to ${e.meta.level === 2 ? 'the owner' : 'managers'} — blocked ${e.meta.hours}h`;
+    case 'task.proof_attached':
+      return `${who} attached proof${title}`;
     case 'member.joined':
       return `${who} joined the workspace`;
     case 'member.role_changed':
       return `${who} made ${e.meta.name} a ${e.meta.to}`;
     case 'org.created':
       return `${who} created the workspace`;
+    case 'playbook.ran':
+      return `Playbook “${e.meta.name}” created ${e.meta.tasks} task(s)`;
+    case 'billing.updated':
+      return `Billing updated: ${e.meta.plan} · ${String(e.meta.status).replace('_', ' ')}`;
+    case 'integration.connected':
+      return `${who} connected ${SOURCE_NAMES[String(e.meta.provider)] ?? e.meta.provider}`;
+    case 'integration.disconnected':
+      return `${who} disconnected ${SOURCE_NAMES[String(e.meta.provider)] ?? e.meta.provider}`;
     default:
       return `${who} ${e.type}`;
   }

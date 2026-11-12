@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AppNotification,
+  BillingOverview,
   Department,
+  Entitlements,
+  IntegrationsOverview,
   LedgerEvent,
+  Playbook,
+  ProofSource,
   Member,
   MemberRole,
   Organization,
@@ -21,7 +27,14 @@ export interface WorkspaceData {
   org: Organization;
   members: Member[];
   departments: Department[];
+  entitlements: Entitlements;
   me: { userId: string; role: MemberRole; departmentId: string | null };
+}
+
+export interface BoardData {
+  tasks: Task[];
+  aiVerdicts: Record<string, TaskProof['aiVerdict']>;
+  verified: Record<string, ProofSource>;
 }
 
 const LIVE_MS = 5_000;
@@ -33,7 +46,7 @@ export function useWorkspace() {
 export function useBoard() {
   return useQuery({
     queryKey: ['tasks'],
-    queryFn: () => api.get<{ tasks: Task[]; aiVerdicts: Record<string, TaskProof['aiVerdict']> }>('/tasks'),
+    queryFn: () => api.get<BoardData>('/tasks'),
     refetchInterval: LIVE_MS,
   });
 }
@@ -80,7 +93,7 @@ export interface TransitionVars {
   reason?: string;
   waitingOnId?: string | null;
   comment?: string;
-  proofs?: Array<{ kind: 'link' | 'note' | 'file'; url?: string; note?: string; filePath?: string; fileName?: string }>;
+  proofs?: Array<{ kind: 'link' | 'note' | 'file'; url?: string; note?: string; filePath?: string; fileName?: string; attestation?: string }>;
 }
 
 export function useTransition() {
@@ -91,7 +104,7 @@ export function useTransition() {
     // Optimistic: move the card immediately; the server is the source of truth on settle.
     onMutate: async (vars) => {
       await qc.cancelQueries({ queryKey: ['tasks'] });
-      const prev = qc.getQueryData<{ tasks: Task[]; aiVerdicts: Record<string, TaskProof['aiVerdict']> }>(['tasks']);
+      const prev = qc.getQueryData<BoardData>(['tasks']);
       const to: Partial<Record<TransitionAction, Task['status']>> = {
         start: 'in_progress',
         block: 'blocked',
@@ -170,4 +183,34 @@ export function useRealtimeHeartbeat(orgId: string | undefined) {
 export function memberName(members: Member[] | undefined, id: string | null | undefined): string {
   if (!id) return 'Someone';
   return members?.find((m) => m.userId === id)?.fullName ?? 'Former member';
+}
+
+/* ------------------------------------------------------------------ SaaS: billing, integrations, notifications, playbooks */
+
+export function useBilling() {
+  return useQuery({ queryKey: ['billing'], queryFn: () => api.get<BillingOverview>('/billing'), staleTime: 15_000 });
+}
+
+export function useIntegrations() {
+  return useQuery({ queryKey: ['integrations'], queryFn: () => api.get<IntegrationsOverview>('/integrations'), refetchInterval: 15_000 });
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.get<{ notifications: AppNotification[]; unread: number }>('/notifications'),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useMarkRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[] | 'all') => api.post('/notifications/read', { ids }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export function usePlaybooks() {
+  return useQuery({ queryKey: ['playbooks'], queryFn: () => api.get<{ playbooks: Playbook[] }>('/playbooks') });
 }

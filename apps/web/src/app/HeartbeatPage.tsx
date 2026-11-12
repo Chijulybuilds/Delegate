@@ -39,8 +39,8 @@ export default function HeartbeatPage() {
   return (
     <div>
       <PageHeader
-        title="Heartbeat"
-        subtitle="The global rhythm of the workspace — every assignment, start, blocker, proof and audit, live."
+        title="Activity"
+        subtitle="Everything that happened — assignments, starts, blockers, proof and audits, live."
         actions={
           <>
             <span className="inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 text-xs text-mute">

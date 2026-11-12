@@ -1,5 +1,5 @@
-import { availableActions, LANES, STATUS_META, type Task, type TaskProof, type TransitionAction } from '@delegate/shared';
-import { BellRing, Plus, Sparkles } from 'lucide-react';
+import { availableActions, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
+import { BellRing, Plus, ShieldCheck, Sparkles } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -18,6 +18,16 @@ const laneTone: Record<string, string> = {
   approved: 'bg-s-approved',
 };
 
+type Focus = 'toStart' | 'inMotion' | 'waitingOnMe' | 'toAudit';
+const FOCUS: Record<Focus, { label: string; match: (me: string) => (t: Task) => boolean }> = {
+  toStart: { label: 'To start', match: (me) => (t) => t.assigneeId === me && t.status === 'open' },
+  inMotion: { label: 'In motion', match: (me) => (t) => t.assigneeId === me && (t.status === 'in_progress' || t.status === 'blocked') },
+  waitingOnMe: { label: 'Waiting on me', match: (me) => (t) => t.status === 'blocked' && t.waitingOnId === me },
+  toAudit: { label: 'To audit', match: () => (t) => t.status === 'done' },
+};
+
+const SOURCE_LABEL: Record<TaskSource, string> = { app: 'App', slack: 'Slack', teams: 'Teams', whatsapp: 'WhatsApp', playbook: 'Playbook', github: 'GitHub' };
+
 const QUICK: Partial<Record<TransitionAction, string>> = {
   start: 'Start',
   submit: 'Submit proof',
@@ -34,6 +44,7 @@ export default function BoardPage() {
   const [scope, setScope] = useState<'all' | 'mine'>('all');
   const [dept, setDept] = useState<string>('all');
   const [person, setPerson] = useState<string>('all');
+  const [focus, setFocus] = useState<Focus | null>(null);
   const [creating, setCreating] = useState(false);
 
   const openTaskId = params.get('task');
@@ -47,13 +58,23 @@ export default function BoardPage() {
   };
 
   const meId = ws.data?.me.userId ?? '';
+  const isManager = isManagerRole(ws.data?.me.role);
   const tasks = useMemo(() => {
     let list = board.data?.tasks ?? [];
-    if (scope === 'mine') list = list.filter((t) => t.assigneeId === meId);
-    if (dept !== 'all') list = list.filter((t) => t.departmentId === dept);
-    if (person !== 'all') list = list.filter((t) => t.assigneeId === person);
+    if (focus) list = list.filter(FOCUS[focus].match(meId));
+    else {
+      if (scope === 'mine') list = list.filter((t) => t.assigneeId === meId);
+      if (dept !== 'all') list = list.filter((t) => t.departmentId === dept);
+      if (person !== 'all') list = list.filter((t) => t.assigneeId === person);
+    }
     return list;
-  }, [board.data, scope, dept, person, meId]);
+  }, [board.data, scope, dept, person, meId, focus]);
+  const glance = useMemo(() => {
+    const all = board.data?.tasks ?? [];
+    return (Object.keys(FOCUS) as Focus[])
+      .filter((f) => f !== 'toAudit' || isManager)
+      .map((f) => ({ id: f, label: FOCUS[f].label, count: all.filter(FOCUS[f].match(meId)).length }));
+  }, [board.data, meId, isManager]);
 
   const waitingOnMe = (board.data?.tasks ?? []).filter((t) => t.status === 'blocked' && t.waitingOnId === meId);
   const counts = useMemo(() => {
@@ -93,8 +114,27 @@ export default function BoardPage() {
         }
       />
 
+      {/* Today at a glance: four numbers that double as one-click filters */}
+      <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:px-8 md:grid-cols-4" data-testid="glance">
+        {glance.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => setFocus((f) => (f === g.id ? null : g.id))}
+            aria-pressed={focus === g.id}
+            className={cx(
+              'flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors',
+              focus === g.id ? 'border-ink bg-ink text-milk' : 'border-line bg-paper hover:border-line-2',
+            )}
+            data-testid={`glance-${g.id}`}
+          >
+            <span className={cx('text-[13px]', focus === g.id ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
+            <span className="text-2xl font-medium tracking-display">{g.count}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Filters: swimlanes by department/person without losing the global rhythm */}
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-5 sm:px-8">
+      <div className={cx('flex flex-wrap items-center gap-2 px-4 pb-5 sm:px-8', focus && 'pointer-events-none opacity-40')}>
         <Segmented
           value={scope}
           onChange={setScope}
@@ -103,21 +143,14 @@ export default function BoardPage() {
             { value: 'mine', label: 'Mine' },
           ]}
         />
-        <div className="scrollbar-none -mx-1 flex max-w-full gap-1.5 overflow-x-auto px-1">
-          {[{ id: 'all', name: 'All departments', color: '#111' }, ...ws.data.departments].map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setDept(d.id)}
-              className={cx(
-                'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] transition-colors',
-                dept === d.id ? 'border-ink bg-ink text-milk' : 'border-line bg-paper text-ink-2 hover:border-line-2',
-              )}
-            >
-              {d.id !== 'all' && <span className="size-2 rounded-full" style={{ background: d.color }} />}
+        <Select value={dept} onChange={(e) => setDept(e.target.value)} className="h-9 w-auto! rounded-full pr-9 text-[13px]" aria-label="Filter by department">
+          <option value="all">All departments</option>
+          {ws.data.departments.map((d) => (
+            <option key={d.id} value={d.id}>
               {d.name}
-            </button>
+            </option>
           ))}
-        </div>
+        </Select>
         <Select value={person} onChange={(e) => setPerson(e.target.value)} className="h-9 w-auto! rounded-full pr-9 text-[13px]" aria-label="Filter by person">
           <option value="all">Every person</option>
           {ws.data.members.map((m) => (
@@ -180,6 +213,7 @@ export default function BoardPage() {
                         task={t}
                         ws={ws.data}
                         aiVerdict={board.data?.aiVerdicts[t.id] ?? null}
+                        verifiedBy={board.data?.verified[t.id] ?? null}
                         onOpen={() => openTask(t.id)}
                         onQuick={(a) => quick(t, a)}
                         busy={transition.isPending && transition.variables?.id === t.id}
@@ -216,6 +250,7 @@ function TaskCard({
   task,
   ws,
   aiVerdict,
+  verifiedBy,
   onOpen,
   onQuick,
   busy,
@@ -223,6 +258,7 @@ function TaskCard({
   task: Task;
   ws: WorkspaceData;
   aiVerdict: TaskProof['aiVerdict'];
+  verifiedBy: ProofSource | null;
   onOpen: () => void;
   onQuick: (a: TransitionAction) => void;
   busy: boolean;
@@ -264,7 +300,15 @@ function TaskCard({
     >
       <div className="flex items-center gap-2">
         <StatusDot status={task.status} pulse={task.status === 'blocked'} />
+        <span className="font-mono text-[11px] text-faint" data-testid="task-ref">
+          {taskRef(task.seq)}
+        </span>
         <PriorityTag priority={task.priority} />
+        {task.source !== 'app' && (
+          <span className="rounded-full bg-milk px-1.5 py-0.5 text-[10px] font-medium text-mute" title={`Created from ${SOURCE_LABEL[task.source]}`}>
+            {SOURCE_LABEL[task.source]}
+          </span>
+        )}
         {dept && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-faint">
             <span className="size-1.5 rounded-full" style={{ background: dept.color }} />
@@ -280,6 +324,11 @@ function TaskCard({
             Blocked{task.waitingOnId ? ` · waiting on ${memberName(ws.members, task.waitingOnId).split(' ')[0]}` : ''}: {task.blockedReason}
           </p>
         </div>
+      )}
+      {(task.status === 'done' || task.status === 'approved') && verifiedBy && (
+        <span className="mt-2 mr-1 inline-flex items-center gap-1 rounded-full bg-s-approved-soft px-2 py-0.5 text-[11px] font-medium text-[#1A56C2]" data-testid="verified-badge">
+          <ShieldCheck className="size-3" /> Verified · {verifiedBy === 'gdrive' ? 'Google Drive' : verifiedBy === 'github' ? 'GitHub' : 'WhatsApp'}
+        </span>
       )}
       {task.status === 'done' && aiVerdict && (
         <span

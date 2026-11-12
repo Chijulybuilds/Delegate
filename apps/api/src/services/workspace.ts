@@ -1,15 +1,19 @@
 import {
   availableActions,
+  DEFAULT_ORG_SETTINGS,
   isManagerRole,
+  taskRef,
   TRANSITIONS,
   type EventType,
   type MemberRole,
   type Organization,
   type Profile,
+  type ProofSource,
   type Task,
   type TaskDetail,
   type TaskPriority,
   type TaskProof,
+  type TaskSource,
   type TaskStatus,
   type TransitionAction,
 } from '@delegate/shared';
@@ -17,6 +21,9 @@ import { badRequest, conflict, forbidden, HttpError, notFound } from '../lib/err
 import { inviteCode, slugify, uuid } from '../lib/ids.js';
 import type { Store } from '../store/types.js';
 import type { ProofVerifier } from './ai.js';
+import { trialSubscription, type BillingService } from './billing.js';
+import type { DriveService } from './drive.js';
+import type { DomainEvent, Notifier } from './notify.js';
 
 export interface Ctx {
   userId: string;
@@ -30,6 +37,8 @@ export interface ProofInput {
   note?: string | null;
   filePath?: string | null;
   fileName?: string | null;
+  /** Signed Google Drive verification (see DriveService.verify). */
+  attestation?: string | null;
 }
 
 export interface TransitionInput {
@@ -48,6 +57,15 @@ export interface CreateTaskInput {
   dueAt?: string | null;
 }
 
+/** A proof that came from a system of record, not typed by a person. */
+export interface SystemProof {
+  kind: 'link' | 'note';
+  url: string | null;
+  note: string | null;
+  source: ProofSource;
+  verified: boolean;
+}
+
 const DEFAULT_DEPARTMENTS: Array<[string, string]> = [
   ['Operations', '#6E56CF'],
   ['Engineering', '#0EA5A4'],
@@ -57,11 +75,28 @@ const DEFAULT_DEPARTMENTS: Array<[string, string]> = [
 /** Board shows everything still moving plus recently audited work. */
 const BOARD_APPROVED_WINDOW_MS = 14 * 86_400_000;
 
+export interface WorkspaceDeps {
+  store: Store;
+  verifier: ProofVerifier;
+  notifier: Notifier;
+  billing: BillingService;
+  drive: DriveService;
+}
+
 export class WorkspaceService {
-  constructor(
-    private store: Store,
-    private verifier: ProofVerifier,
-  ) {}
+  private store: Store;
+  private verifier: ProofVerifier;
+  private notifier: Notifier;
+  private billing: BillingService;
+  private drive: DriveService;
+
+  constructor(deps: WorkspaceDeps) {
+    this.store = deps.store;
+    this.verifier = deps.verifier;
+    this.notifier = deps.notifier;
+    this.billing = deps.billing;
+    this.drive = deps.drive;
+  }
 
   /* ------------------------------ Onboarding ------------------------------ */
 
@@ -76,11 +111,11 @@ export class WorkspaceService {
       slug,
       inviteCode: inviteCode(input.name),
       timezone: input.timezone || 'UTC',
+      settings: structuredClone(DEFAULT_ORG_SETTINGS),
     });
-    const depts = await Promise.all(
-      DEFAULT_DEPARTMENTS.map(([name, color]) => this.store.createDepartment({ orgId: org.id, name, color })),
-    );
+    const depts = await Promise.all(DEFAULT_DEPARTMENTS.map(([name, color]) => this.store.createDepartment({ orgId: org.id, name, color })));
     await this.store.addMember({ orgId: org.id, userId: user.id, role: 'owner', departmentId: depts[0]?.id ?? null });
+    await this.store.upsertSubscription(trialSubscription(org.id));
     await this.log(org.id, user.id, 'org.created', null, { name: org.name });
     return org;
   }
@@ -90,8 +125,14 @@ export class WorkspaceService {
     const org = await this.store.getOrgByInviteCode(code.trim());
     if (!org) throw notFound('That invite code does not match any workspace');
     if (org.status === 'suspended') throw forbidden('This workspace is suspended');
+    const ent = await this.billing.entitlements(org.id);
+    const count = (await this.store.listMemberships(org.id)).length;
+    if (ent.maxMembers !== null && count >= ent.maxMembers) {
+      throw new HttpError(402, `${org.name} is on the free Starter plan (up to ${ent.maxMembers} people). Ask the owner to upgrade so you can join.`, 'upgrade_required');
+    }
     await this.store.addMember({ orgId: org.id, userId: user.id, role: 'member', departmentId: null });
     await this.log(org.id, user.id, 'member.joined', null, { name: user.fullName });
+    await this.billing.syncSeats(org.id);
     return org;
   }
 
@@ -110,84 +151,89 @@ export class WorkspaceService {
     if (patch.departmentId) await this.assertDepartment(ctx.orgId, patch.departmentId);
     await this.store.updateMember(ctx.orgId, userId, patch);
     if (patch.role && patch.role !== target.role) {
-      await this.log(ctx.orgId, ctx.userId, 'member.role_changed', null, {
-        userId,
-        name: target.fullName,
-        from: target.role,
-        to: patch.role,
-      });
+      await this.log(ctx.orgId, ctx.userId, 'member.role_changed', null, { userId, name: target.fullName, from: target.role, to: patch.role });
     }
   }
 
   async createDepartment(ctx: Ctx, input: { name: string; color?: string }) {
     if (!isManagerRole(ctx.role)) throw forbidden('Only managers can add departments');
     const existing = await this.store.listDepartments(ctx.orgId);
-    if (existing.some((d) => d.name.toLowerCase() === input.name.trim().toLowerCase())) {
-      throw conflict('A department with that name already exists');
-    }
+    if (existing.some((d) => d.name.toLowerCase() === input.name.trim().toLowerCase())) throw conflict('A department with that name already exists');
     return this.store.createDepartment({ orgId: ctx.orgId, name: input.name.trim(), color: input.color || '#6B7280' });
   }
 
-  async updateOrg(ctx: Ctx, patch: { name?: string; timezone?: string; regenerateInvite?: boolean }) {
+  async updateOrg(ctx: Ctx, patch: { name?: string; timezone?: string; regenerateInvite?: boolean; settings?: Partial<Organization['settings']> }) {
     if (!isManagerRole(ctx.role)) throw forbidden('Only managers can change workspace settings');
     if (patch.name !== undefined && ctx.role !== 'owner') throw forbidden('Only the owner can rename the workspace');
     const org = await this.store.getOrg(ctx.orgId);
     if (!org) throw notFound('Workspace not found');
+    if (patch.settings?.escalation?.enabled) await this.billing.require(ctx.orgId, 'escalations', 'Escalation alerts');
     return this.store.updateOrg(ctx.orgId, {
       ...(patch.name ? { name: patch.name.trim() } : {}),
       ...(patch.timezone ? { timezone: patch.timezone } : {}),
       ...(patch.regenerateInvite ? { inviteCode: inviteCode(org.name) } : {}),
+      ...(patch.settings
+        ? {
+            settings: {
+              ...org.settings,
+              ...patch.settings,
+              escalation: { ...org.settings.escalation, ...(patch.settings.escalation ?? {}) },
+              digest: { ...org.settings.digest, ...(patch.settings.digest ?? {}) },
+            },
+          }
+        : {}),
     });
   }
 
   /* -------------------------------- Tasks --------------------------------- */
 
-  async listBoard(ctx: Ctx): Promise<{ tasks: Task[]; aiVerdicts: Record<string, TaskProof['aiVerdict']> }> {
+  async listBoard(ctx: Ctx): Promise<{ tasks: Task[]; aiVerdicts: Record<string, TaskProof['aiVerdict']>; verified: Record<string, ProofSource> }> {
     const cutoff = new Date(Date.now() - BOARD_APPROVED_WINDOW_MS).toISOString();
-    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter(
-      (t) => t.status !== 'approved' || (t.approvedAt ?? t.updatedAt) >= cutoff,
-    );
-    // Latest AI verdict per task, so the board can badge green cards without N+1 calls.
+    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => t.status !== 'approved' || (t.approvedAt ?? t.updatedAt) >= cutoff);
+    // Latest AI verdict + verified source per task, so cards can badge without N+1 calls.
     const proofs = await this.store.listProofsForOrg(ctx.orgId);
     const aiVerdicts: Record<string, TaskProof['aiVerdict']> = {};
+    const verified: Record<string, ProofSource> = {};
     for (const p of proofs.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
       if (p.aiVerdict) aiVerdicts[p.taskId] = p.aiVerdict;
+      if (p.verified) verified[p.taskId] = p.source;
     }
-    return { tasks, aiVerdicts };
+    return { tasks, aiVerdicts, verified };
   }
 
-  async getTaskForCtx(ctx: Ctx, id: string): Promise<Task> {
+  async getTaskForCtx(ctx: Pick<Ctx, 'orgId'>, id: string): Promise<Task> {
     const task = await this.store.getTask(id);
     // Same 404 for "missing" and "other tenant" so IDs can't be probed across workspaces.
     if (!task || task.orgId !== ctx.orgId) throw notFound('Task not found');
     return task;
   }
 
-  async detail(ctx: Ctx, id: string): Promise<TaskDetail> {
+  async findByRef(orgId: string, ref: string | number): Promise<Task | null> {
+    const seq = typeof ref === 'number' ? ref : Number(String(ref).replace(/^DLG-/i, '').replace(/^#/, ''));
+    if (!Number.isInteger(seq) || seq <= 0) return null;
+    return this.store.getTaskBySeq(orgId, seq);
+  }
+
+  async detail(ctx: Pick<Ctx, 'orgId'>, id: string): Promise<TaskDetail> {
     const task = await this.getTaskForCtx(ctx, id);
-    const [proofs, comments, events] = await Promise.all([
-      this.store.listProofs(id),
-      this.store.listComments(id),
-      this.store.listEvents({ taskId: id, limit: 100 }),
-    ]);
+    const [proofs, comments, events] = await Promise.all([this.store.listProofs(id), this.store.listComments(id), this.store.listEvents({ taskId: id, limit: 100 })]);
     return { task, proofs, comments, events };
   }
 
-  async createTask(ctx: Ctx, input: CreateTaskInput): Promise<Task> {
+  async createTask(ctx: Ctx, input: CreateTaskInput, source: TaskSource = 'app', extra: { playbookId?: string; occurrenceKey?: string } = {}): Promise<Task> {
     const members = await this.store.listMembers(ctx.orgId);
     const assigneeId = input.assigneeId ?? ctx.userId;
     const assignee = members.find((m) => m.userId === assigneeId);
     if (!assignee) throw badRequest('Assignee must be a member of this workspace');
-    if (!isManagerRole(ctx.role) && assigneeId !== ctx.userId) {
-      throw forbidden('Only managers can assign tasks to teammates');
-    }
+    if (!isManagerRole(ctx.role) && assigneeId !== ctx.userId) throw forbidden('Only managers can assign tasks to teammates');
     const departmentId = input.departmentId === undefined ? assignee.departmentId : input.departmentId;
     if (departmentId) await this.assertDepartment(ctx.orgId, departmentId);
 
     const task = await this.store.insertTask({
       orgId: ctx.orgId,
-      title: input.title.trim(),
-      description: (input.description ?? '').trim(),
+      source,
+      title: input.title.trim().slice(0, 160),
+      description: (input.description ?? '').trim().slice(0, 4000),
       status: 'open',
       priority: input.priority ?? 'medium',
       assigneeId,
@@ -200,22 +246,29 @@ export class WorkspaceService {
       submittedAt: null,
       approvedAt: null,
       approvedById: null,
+      blockedAt: null,
+      escalationLevel: 0,
+      overdueAlertedAt: null,
+      playbookId: extra.playbookId ?? null,
+      occurrenceKey: extra.occurrenceKey ?? null,
     });
-    await this.log(ctx.orgId, ctx.userId, 'task.created', task, { assigneeId }, null, 'open');
+    await this.log(ctx.orgId, ctx.userId, 'task.created', task, { assigneeId, source }, null, 'open');
+    await this.emit({ type: 'assigned', task, actorId: ctx.userId });
     return task;
   }
 
   async updateTask(ctx: Ctx, id: string, patch: Partial<CreateTaskInput>): Promise<Task> {
     const task = await this.getTaskForCtx(ctx, id);
-    if (!isManagerRole(ctx.role) && task.createdById !== ctx.userId) {
-      throw forbidden('Only managers or the task creator can edit this task');
-    }
+    if (!isManagerRole(ctx.role) && task.createdById !== ctx.userId) throw forbidden('Only managers or the task creator can edit this task');
     if (task.status === 'approved') throw conflict('Audited tasks are locked');
     const next: Partial<Task> = {};
     if (patch.title !== undefined) next.title = patch.title.trim();
     if (patch.description !== undefined) next.description = patch.description.trim();
     if (patch.priority !== undefined) next.priority = patch.priority;
-    if (patch.dueAt !== undefined) next.dueAt = patch.dueAt;
+    if (patch.dueAt !== undefined) {
+      next.dueAt = patch.dueAt;
+      next.overdueAlertedAt = null;
+    }
     if (patch.departmentId !== undefined) {
       if (patch.departmentId) await this.assertDepartment(ctx.orgId, patch.departmentId);
       next.departmentId = patch.departmentId;
@@ -226,13 +279,15 @@ export class WorkspaceService {
       if (!members.some((m) => m.userId === patch.assigneeId)) throw badRequest('Assignee must be a member of this workspace');
       next.assigneeId = patch.assigneeId;
     }
-    const changed = Object.keys(next).filter((k) => next[k as keyof Task] !== task[k as keyof Task]);
+    const changed = Object.keys(next).filter((k) => k !== 'overdueAlertedAt' && next[k as keyof Task] !== task[k as keyof Task]);
     if (changed.length === 0) return task;
     const updated = await this.store.updateTask(id, next);
     await this.log(ctx.orgId, ctx.userId, 'task.updated', updated, { fields: changed });
+    if (next.assigneeId) await this.emit({ type: 'assigned', task: updated, actorId: ctx.userId });
     return updated;
   }
 
+  /** A person moving a task through the lifecycle (permissions enforced). */
   async transition(ctx: Ctx, id: string, action: TransitionAction, input: TransitionInput): Promise<TaskDetail> {
     const task = await this.getTaskForCtx(ctx, id);
     const rule = TRANSITIONS[action];
@@ -240,16 +295,50 @@ export class WorkspaceService {
       throw new HttpError(409, `Cannot ${rule.label.toLowerCase()} a task that is ${task.status.replace('_', ' ')}`, 'invalid_transition');
     }
     if (!availableActions(task, { userId: ctx.userId, role: ctx.role }).includes(action)) {
-      if (action === 'approve' && task.assigneeId === ctx.userId) {
-        throw forbidden('You cannot audit your own work — ask another manager');
-      }
+      if (action === 'approve' && task.assigneeId === ctx.userId) throw forbidden('You cannot audit your own work — ask another manager');
       throw forbidden(rule.actors.includes('assignee') && !rule.actors.includes('manager') ? 'Only the assignee can do that' : 'Only managers can do that');
     }
+    const proofs = action === 'submit' ? await this.normalizeProofs(task, input.proofs ?? []) : [];
+    await this.applyTransition(task, action, input, { actorId: ctx.userId, authorId: ctx.userId, proofs, source: undefined });
+    return this.detail(ctx, task.id);
+  }
 
+  /**
+   * Automations (GitHub, WhatsApp proof, playbooks) move tasks without a signed-in person.
+   * State rules still apply; the ledger records actor = null and the source system.
+   */
+  async systemTransition(orgId: string, taskId: string, action: TransitionAction, input: TransitionInput & { proofs?: never }, opts: { source: string; proofs?: SystemProof[] }) {
+    const task = await this.getTaskForCtx({ orgId }, taskId);
+    if (!TRANSITIONS[action].from.includes(task.status)) return task;
+    return this.applyTransition(task, action, input, {
+      actorId: null,
+      authorId: task.assigneeId,
+      proofs: (opts.proofs ?? []).map((p) => ({ ...p, filePath: null, fileName: null })),
+      source: opts.source,
+    });
+  }
+
+  /** Adds proof without changing state (e.g. a commit that mentions DLG-12). */
+  async attachSystemProof(orgId: string, taskId: string, proof: SystemProof, source: string) {
+    const task = await this.getTaskForCtx({ orgId }, taskId);
+    await this.store.insertProof({ taskId, orgId, authorId: task.assigneeId, ...proof, fileName: null, filePath: null, aiVerdict: null, aiReason: null });
+    await this.log(orgId, null, 'task.proof_attached', task, { source, url: proof.url });
+  }
+
+  private async applyTransition(
+    task: Task,
+    action: TransitionAction,
+    input: TransitionInput,
+    opts: { actorId: string | null; authorId: string; proofs: Array<SystemProof & { filePath: string | null; fileName: string | null }>; source: string | undefined },
+  ): Promise<Task> {
+    const rule = TRANSITIONS[action];
     const now = new Date().toISOString();
-    const patch: Partial<Task> = { status: rule.to };
-    const meta: Record<string, unknown> = {};
+    // Any movement resets the escalation ladder.
+    const patch: Partial<Task> = { status: rule.to, escalationLevel: 0 };
+    const meta: Record<string, unknown> = opts.source ? { source: opts.source } : {};
     let eventType: EventType;
+    let domain: DomainEvent['type'] | null = null;
+    let aiVerdict: TaskProof['aiVerdict'] = null;
 
     switch (action) {
       case 'start':
@@ -262,85 +351,119 @@ export class WorkspaceService {
         if (!reason || reason.length < 3) throw badRequest('Say what is blocking you');
         if (input.waitingOnId) {
           if (input.waitingOnId === task.assigneeId) throw badRequest('A task cannot wait on its own assignee');
-          const members = await this.store.listMembers(ctx.orgId);
+          const members = await this.store.listMembers(task.orgId);
           if (!members.some((m) => m.userId === input.waitingOnId)) throw badRequest('That teammate is not in this workspace');
         }
         patch.blockedReason = reason;
         patch.waitingOnId = input.waitingOnId ?? null;
         patch.startedAt = task.startedAt ?? now;
+        patch.blockedAt = now;
         Object.assign(meta, { reason, waitingOnId: input.waitingOnId ?? null });
         eventType = 'task.blocked';
+        domain = 'blocked';
         break;
       }
 
       case 'unblock':
         patch.blockedReason = null;
         patch.waitingOnId = null;
+        patch.blockedAt = null;
         eventType = 'task.unblocked';
         break;
 
       case 'submit': {
-        const proofs = (input.proofs ?? []).map((p) => normalizeProof(p, task));
-        if (proofs.length === 0) throw badRequest('Attach at least one proof of work (link, note or file)');
-        const ai = this.verifier.enabled
-          ? await this.verifier.check({ title: task.title, description: task.description, proofs: proofs.map((p) => ({ ...p })) })
-          : null;
-        for (const p of proofs) {
+        if (opts.proofs.length === 0) throw badRequest('Attach at least one proof of work (link, note or file)');
+        const ent = await this.billing.entitlements(task.orgId);
+        const ai =
+          this.verifier.enabled && ent.features.aiVerification
+            ? await this.verifier.check({ title: task.title, description: task.description, proofs: opts.proofs.map((p) => ({ ...p })) })
+            : null;
+        aiVerdict = ai?.verdict ?? null;
+        for (const p of opts.proofs) {
           await this.store.insertProof({
             taskId: task.id,
-            orgId: ctx.orgId,
-            authorId: ctx.userId,
-            kind: p.kind,
+            orgId: task.orgId,
+            authorId: opts.authorId,
+            kind: p.kind === 'note' ? 'note' : p.filePath ? 'file' : p.kind,
             url: p.url,
             note: p.note,
             fileName: p.fileName,
             filePath: p.filePath,
+            source: p.source,
+            verified: p.verified,
             aiVerdict: ai?.verdict ?? null,
             aiReason: ai?.reason ?? null,
           });
         }
         patch.submittedAt = now;
-        Object.assign(meta, { proofCount: proofs.length, aiVerdict: ai?.verdict ?? null });
+        patch.startedAt = task.startedAt ?? now;
+        patch.blockedReason = null;
+        patch.waitingOnId = null;
+        patch.blockedAt = null;
+        Object.assign(meta, { proofCount: opts.proofs.length, aiVerdict, verified: opts.proofs.some((p) => p.verified) });
         eventType = 'task.submitted';
+        domain = 'submitted';
         break;
       }
 
       case 'approve':
+        if (!opts.actorId) throw forbidden('Audits need a person');
         patch.approvedAt = now;
-        patch.approvedById = ctx.userId;
+        patch.approvedById = opts.actorId;
         eventType = 'task.approved';
+        domain = 'approved';
         break;
 
       case 'request_changes': {
         const comment = input.comment?.trim();
         if (!comment) throw badRequest('Tell the assignee what needs to change');
-        await this.store.insertComment({ taskId: task.id, orgId: ctx.orgId, authorId: ctx.userId, body: comment });
+        if (!opts.actorId) throw forbidden('Reviews need a person');
+        await this.store.insertComment({ taskId: task.id, orgId: task.orgId, authorId: opts.actorId, body: comment });
         patch.submittedAt = null;
         Object.assign(meta, { comment });
         eventType = 'task.changes_requested';
+        domain = 'changes_requested';
         break;
       }
     }
 
     const updated = await this.store.updateTask(task.id, patch);
-    await this.log(ctx.orgId, ctx.userId, eventType, updated, meta, task.status, rule.to);
-    return this.detail(ctx, task.id);
+    await this.log(task.orgId, opts.actorId, eventType, updated, meta, task.status, rule.to);
+    if (domain === 'blocked') await this.emit({ type: 'blocked', task: updated, actorId: opts.actorId });
+    if (domain === 'submitted') await this.emit({ type: 'submitted', task: updated, actorId: opts.actorId, aiVerdict, source: opts.source });
+    if (domain === 'approved') await this.emit({ type: 'approved', task: updated, actorId: opts.actorId! });
+    if (domain === 'changes_requested') await this.emit({ type: 'changes_requested', task: updated, actorId: opts.actorId!, comment: String(meta.comment) });
+    return updated;
   }
 
   async comment(ctx: Ctx, id: string, body: string) {
     const task = await this.getTaskForCtx(ctx, id);
     const comment = await this.store.insertComment({ taskId: task.id, orgId: ctx.orgId, authorId: ctx.userId, body: body.trim() });
-    await this.log(ctx.orgId, ctx.userId, 'task.commented', task, { preview: body.trim().slice(0, 140) });
+    const preview = body.trim().slice(0, 140);
+    await this.log(ctx.orgId, ctx.userId, 'task.commented', task, { preview });
+    await this.emit({ type: 'commented', task, actorId: ctx.userId, preview });
     return comment;
   }
 
-  /** Stores a file for a later `submit` and returns the reference to include in the proof. */
+  /**
+   * Prepares a proof upload. With Supabase the browser uploads straight to Storage (no size
+   * limits from serverless request bodies); in demo mode the file goes through the API.
+   */
+  async prepareProofUpload(ctx: Ctx, id: string, fileName: string, size: number) {
+    const task = await this.getTaskForCtx(ctx, id);
+    if (task.assigneeId !== ctx.userId) throw forbidden('Only the assignee can attach proof');
+    if (task.status !== 'in_progress') throw conflict('Start the task before attaching proof');
+    if (size > 25 * 1024 * 1024) throw badRequest('Files can be up to 25 MB');
+    const filePath = this.proofPath(ctx.orgId, task.id, fileName);
+    const signed = await this.store.createUploadUrl(filePath);
+    return signed ? { mode: 'direct' as const, filePath, fileName: fileName.slice(0, 200), ...signed } : { mode: 'api' as const };
+  }
+
   async uploadProofFile(ctx: Ctx, id: string, file: { originalname: string; mimetype: string; buffer: Buffer }) {
     const task = await this.getTaskForCtx(ctx, id);
     if (task.assigneeId !== ctx.userId) throw forbidden('Only the assignee can attach proof');
-    if (!['in_progress'].includes(task.status)) throw conflict('Start the task before attaching proof');
-    const safeName = file.originalname.replace(/[^\w.-]+/g, '_').slice(-80) || 'file';
-    const filePath = `${ctx.orgId}/${task.id}/${uuid()}-${safeName}`;
+    if (task.status !== 'in_progress') throw conflict('Start the task before attaching proof');
+    const filePath = this.proofPath(ctx.orgId, task.id, file.originalname);
     await this.store.putFile(filePath, file.buffer, file.mimetype || 'application/octet-stream');
     return { filePath, fileName: file.originalname.slice(0, 200) };
   }
@@ -356,20 +479,51 @@ export class WorkspaceService {
 
   /* ------------------------------- helpers -------------------------------- */
 
+  private proofPath(orgId: string, taskId: string, fileName: string) {
+    const safeName = fileName.replace(/[^\w.-]+/g, '_').slice(-80) || 'file';
+    return `${orgId}/${taskId}/${uuid()}-${safeName}`;
+  }
+
+  private async normalizeProofs(task: Task, proofs: ProofInput[]) {
+    const out: Array<SystemProof & { filePath: string | null; fileName: string | null }> = [];
+    for (const p of proofs) {
+      if (p.attestation) {
+        const att = await this.drive.readAttestation(p.attestation, task.id);
+        out.push({ kind: 'link', url: att.url, note: att.note, source: 'gdrive', verified: att.verified, filePath: null, fileName: att.fileName });
+        continue;
+      }
+      const url = p.url?.trim() || null;
+      const note = p.note?.trim() || null;
+      if (p.kind === 'link') {
+        if (!url) throw badRequest('Link proof needs a URL');
+        if (!/^https?:\/\//i.test(url)) throw badRequest('Proof links must start with http:// or https://');
+      }
+      if (p.kind === 'note' && (!note || note.length < 3)) throw badRequest('Proof note is too short');
+      if (p.kind === 'file' && (!p.filePath || !p.filePath.startsWith(`${task.orgId}/${task.id}/`))) throw badRequest('Invalid file reference');
+      out.push({
+        kind: p.kind === 'file' ? 'link' : p.kind,
+        url: p.kind === 'link' ? url : null,
+        note,
+        source: 'manual',
+        verified: false,
+        filePath: p.kind === 'file' ? p.filePath! : null,
+        fileName: p.kind === 'file' ? (p.fileName?.slice(0, 200) ?? 'file') : null,
+      });
+    }
+    return out;
+  }
+
+  private async emit(evt: { type: DomainEvent['type'] } & Record<string, unknown> & { task: Task }) {
+    const org = await this.store.getOrg(evt.task.orgId);
+    if (org) await this.notifier.dispatch({ ...evt, org } as DomainEvent);
+  }
+
   private async assertDepartment(orgId: string, departmentId: string) {
     const depts = await this.store.listDepartments(orgId);
     if (!depts.some((d) => d.id === departmentId)) throw badRequest('Unknown department');
   }
 
-  private async log(
-    orgId: string,
-    actorId: string,
-    type: EventType,
-    task: Task | null,
-    meta: Record<string, unknown> = {},
-    fromStatus: TaskStatus | null = null,
-    toStatus: TaskStatus | null = null,
-  ) {
+  async log(orgId: string, actorId: string | null, type: EventType, task: Task | null, meta: Record<string, unknown> = {}, fromStatus: TaskStatus | null = null, toStatus: TaskStatus | null = null) {
     await this.store.appendEvent({
       orgId,
       taskId: task?.id ?? null,
@@ -377,30 +531,9 @@ export class WorkspaceService {
       type,
       fromStatus,
       toStatus,
-      meta: task ? { title: task.title, ...meta } : meta,
+      meta: task ? { title: task.title, ref: taskRef(task.seq), ...meta } : meta,
     });
   }
-}
-
-function normalizeProof(p: ProofInput, task: Task) {
-  const url = p.url?.trim() || null;
-  const note = p.note?.trim() || null;
-  if (p.kind === 'link') {
-    if (!url) throw badRequest('Link proof needs a URL');
-    if (!/^https?:\/\//i.test(url)) throw badRequest('Proof links must start with http:// or https://');
-  }
-  if (p.kind === 'note' && (!note || note.length < 3)) throw badRequest('Proof note is too short');
-  if (p.kind === 'file') {
-    // Files must have been uploaded for this exact task (path is scoped org/task/...).
-    if (!p.filePath || !p.filePath.startsWith(`${task.orgId}/${task.id}/`)) throw badRequest('Invalid file reference');
-  }
-  return {
-    kind: p.kind,
-    url: p.kind === 'link' ? url : null,
-    note: note,
-    filePath: p.kind === 'file' ? p.filePath! : null,
-    fileName: p.kind === 'file' ? (p.fileName?.slice(0, 200) ?? 'file') : null,
-  };
 }
 
 function endOfToday(): string {

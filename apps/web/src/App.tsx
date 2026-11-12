@@ -11,8 +11,8 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const AppShell = lazy(() => import('./app/AppShell'));
 const BoardPage = lazy(() => import('./app/BoardPage'));
 const HeartbeatPage = lazy(() => import('./app/HeartbeatPage'));
-const VelocityPage = lazy(() => import('./app/VelocityPage'));
-const StandupPage = lazy(() => import('./app/StandupPage'));
+const InsightsPage = lazy(() => import('./app/InsightsPage'));
+const PlaybooksPage = lazy(() => import('./app/PlaybooksPage'));
 const TeamPage = lazy(() => import('./app/TeamPage'));
 const SettingsPage = lazy(() => import('./app/SettingsPage'));
 // The platform console is only reachable by typing /admin — nothing in the product links to it.
@@ -45,9 +45,13 @@ export function App() {
           }
         >
           <Route index element={<BoardPage />} />
-          <Route path="heartbeat" element={<HeartbeatPage />} />
-          <Route path="velocity" element={<VelocityPage />} />
-          <Route path="standup" element={<StandupPage />} />
+          <Route path="activity" element={<HeartbeatPage />} />
+          <Route path="insights" element={<InsightsPage />} />
+          <Route path="playbooks" element={<PlaybooksPage />} />
+          {/* Old links keep working. */}
+          <Route path="heartbeat" element={<Navigate to="/app/activity" replace />} />
+          <Route path="velocity" element={<Navigate to="/app/insights?tab=velocity" replace />} />
+          <Route path="standup" element={<Navigate to="/app/insights?tab=standup" replace />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>

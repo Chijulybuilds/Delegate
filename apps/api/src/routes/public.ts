@@ -35,6 +35,13 @@ export function publicRoutes(deps: {
       supabaseAnonKey: config.supabase?.anonKey ?? null,
       aiVerification: deps.ai.enabled,
       version: config.version,
+      billing: { stripe: !!config.stripe, paystack: !!config.paystack, demoCheckout: config.simulateProviders },
+      integrations: {
+        slack: !!config.slack || config.simulateProviders,
+        whatsapp: { enabled: !!config.whatsapp || config.simulateProviders, businessNumber: config.whatsapp?.businessNumber ?? null, simulator: config.simulateProviders },
+        googleDrive: config.google,
+      },
+      storage: config.supabase ? 'supabase' : 'api',
     };
     res.json(body);
   });

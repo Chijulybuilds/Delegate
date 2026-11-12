@@ -5,7 +5,7 @@ import { hours, pct } from '../lib/format';
 import { PageHeader } from './AppShell';
 import { useVelocity } from './data';
 
-export default function VelocityPage() {
+export default function VelocityPage({ embedded = false }: { embedded?: boolean }) {
   const [days, setDays] = useState<'7' | '14' | '30'>('14');
   const { data, isLoading } = useVelocity(Number(days));
 
@@ -13,6 +13,20 @@ export default function VelocityPage() {
 
   return (
     <div>
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-4 sm:px-8">
+          <p className="text-sm text-mute">Time-to-impact: how fast work moves from red (assigned) to green (executed with proof).</p>
+          <Segmented
+            value={days}
+            onChange={setDays}
+            options={[
+              { value: '7', label: '7 days' },
+              { value: '14', label: '14 days' },
+              { value: '30', label: '30 days' },
+            ]}
+          />
+        </div>
+      ) : (
       <PageHeader
         title="Velocity Pulse"
         subtitle="Time-to-impact: how fast work moves from red (assigned) to green (executed with proof)."
@@ -28,6 +42,7 @@ export default function VelocityPage() {
           />
         }
       />
+      )}
       {isLoading || !data ? (
         <div className="px-8">
           <Spinner />

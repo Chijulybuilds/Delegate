@@ -40,11 +40,16 @@ export class AdminService {
   }
 
   async orgs(): Promise<AdminOrgRow[]> {
-    const [orgs, stats] = await Promise.all([this.store.listOrgs(), this.store.orgStats()]);
+    const [orgs, stats, subs] = await Promise.all([this.store.listOrgs(), this.store.orgStats(), this.store.listSubscriptions()]);
     const byId = new Map(stats.map((s) => [s.orgId, s]));
+    const subById = new Map(subs.map((s) => [s.orgId, s]));
     return orgs
       .map((o) => ({
         ...o,
+        plan: subById.get(o.id)?.plan ?? o.plan,
+        billingStatus: subById.get(o.id)?.status ?? 'none',
+        billingProvider: subById.get(o.id)?.provider ?? null,
+        seats: subById.get(o.id)?.seats ?? 0,
         members: byId.get(o.id)?.members ?? 0,
         tasks: byId.get(o.id)?.tasks ?? 0,
         lastActivityAt: byId.get(o.id)?.lastActivityAt ?? null,
@@ -73,9 +78,24 @@ export class AdminService {
     return this.store.updateOrg(id, { status });
   }
 
+  /** Manual plan override (e.g. an Enterprise contract invoiced outside Stripe/Paystack). */
   async setOrgPlan(id: string, plan: 'starter' | 'team' | 'enterprise') {
     const org = await this.store.getOrg(id);
     if (!org) throw notFound('Workspace not found');
+    const current = (await this.store.getSubscription(id)) ?? null;
+    await this.store.upsertSubscription({
+      orgId: id,
+      plan,
+      status: plan === 'starter' ? 'none' : 'active',
+      provider: plan === 'starter' ? null : 'manual',
+      seats: current?.seats ?? 0,
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      providerCustomerId: current?.providerCustomerId ?? null,
+      providerSubscriptionId: current?.providerSubscriptionId ?? null,
+      updatedAt: new Date().toISOString(),
+    });
     return this.store.updateOrg(id, { plan });
   }
 
