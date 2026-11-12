@@ -111,7 +111,7 @@ function Hero() {
   const lift = useTransform(scrollY, [0, 420], [0, -40]);
   return (
     <section id="top" className="relative h-[100svh] min-h-[640px]">
-      <motion.div style={{ opacity: fade, y: lift }} className="relative px-4 pt-[17vh] text-center sm:pt-[15vh]">
+      <motion.div id="hero-copy" style={{ opacity: fade, y: lift }} className="relative px-4 pt-[17vh] text-center sm:pt-[15vh]">
         <motion.h1
           className="mx-auto max-w-5xl text-[clamp(2.6rem,6.6vw,5.9rem)] font-medium leading-[0.95] tracking-display"
           initial={{ opacity: 0, y: 30 }}
@@ -357,7 +357,7 @@ function Pricing() {
 function FinalCta() {
   return (
     <section id="start" className="relative h-[100svh] min-h-[680px]">
-      <div className="px-4 pt-[16vh] text-center">
+      <div id="start-copy" className="px-4 pt-[16vh] text-center">
         <Reveal>
           <h2 className="text-[clamp(2.6rem,6.6vw,5.9rem)] font-medium leading-[0.95] tracking-display">
             <span className="block text-[#6d6d66]">Hand it off.</span>

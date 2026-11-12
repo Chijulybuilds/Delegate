@@ -39,6 +39,38 @@ test.describe('Landing page', () => {
     await expect(page.locator('#how li[data-active="true"]')).toContainText('Audited');
   });
 
+  test('the cup never covers the hero copy and never slides under the footer', async ({ page }) => {
+    const geometry = () =>
+      page.evaluate(() => {
+        const img = document.querySelector('[data-testid="cup-stage"] img')!.getBoundingClientRect();
+        const at = (fraction: number) => img.top + img.height * fraction;
+        return {
+          steamTop: at(22 / 1278),
+          cupBottom: at(815 / 1278),
+          handEnd: at(0.86),
+          copyBottom: document.getElementById('hero-copy')!.getBoundingClientRect().bottom,
+          footerTop: document.querySelector('footer')!.getBoundingClientRect().top,
+          vh: window.innerHeight,
+        };
+      });
+
+    for (const size of [{ width: 1918, height: 923 }, { width: 1366, height: 650 }]) {
+      await page.setViewportSize(size);
+      await page.goto('/');
+      // Hero: steam starts below the headline + pills, and the whole cup is above the fold.
+      await expect.poll(async () => {
+        const g = await geometry();
+        return g.steamTop >= g.copyBottom - 2 && g.cupBottom <= g.vh;
+      }, { timeout: 8000 }).toBe(true);
+      // Bottom of the page: the hand ends above the footer instead of sliding under it.
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await expect.poll(async () => {
+        const g = await geometry();
+        return g.handEnd <= g.footerTop + 1;
+      }, { timeout: 8000 }).toBe(true);
+    }
+  });
+
   test('sections and pricing are present', async ({ page }) => {
     await page.goto('/');
     for (const id of ['how', 'product', 'preview', 'pricing', 'start']) {

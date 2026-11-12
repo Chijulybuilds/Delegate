@@ -10,7 +10,7 @@ import {
   type MotionValue,
 } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CUP_ASPECT, KRAFT, PhotoCup, type CupPrint } from './PhotoCup';
+import { CUP_ASPECT, KRAFT, PHOTO, PhotoCup, type CupPrint } from './PhotoCup';
 
 /**
  * The one motion that runs through the whole landing page: a single hand-held cup (a real
@@ -30,33 +30,23 @@ interface Pose {
   o: number;
 }
 
-function posesFor(vw: number, vh: number, cupH: number, reduced: boolean): Record<SectionId, Pose> {
-  const mobile = vw < 768;
-  // Hero: the photo's top sits at 29% (desktop) / 43% (mobile) of the viewport, so the lid lands
-  // just under the headline and the forearm runs off the bottom edge.
-  const heroTop = mobile ? 0.43 : 0.335;
-  const hero: Pose = { cx: 0.5, cy: heroTop + cupH / 2 / vh, s: 1, r: 0, o: 1 };
-  if (reduced) {
-    const hidden = { ...hero, o: 0 };
-    return { top: hero, how: hidden, product: hidden, preview: hidden, pricing: hidden, start: hidden };
-  }
-  if (mobile) {
+/** Poses for the travelling sections; the hero and finale are fitted to the real layout in measure(). */
+function posesFor(vw: number, reduced: boolean): Record<Exclude<SectionId, 'top' | 'start'>, Pose> {
+  const hidden: Pose = { cx: 0.5, cy: 0.8, s: 1, r: 0, o: 0 };
+  if (reduced) return { how: hidden, product: hidden, preview: hidden, pricing: hidden };
+  if (vw < 768) {
     return {
-      top: hero,
       how: { cx: 0.5, cy: 0.82, s: 0.78, r: 3, o: 1 },
       product: { cx: 0.9, cy: 0.93, s: 0.34, r: -10, o: 1 },
       preview: { cx: 0.92, cy: 0.94, s: 0.3, r: 12, o: 1 },
       pricing: { cx: 0.08, cy: 0.94, s: 0.3, r: -12, o: 1 },
-      start: { cx: 0.5, cy: 0.5 + (cupH * 0.72) / 2 / vh + 0.12, s: 0.72, r: 0, o: 1 },
     };
   }
   return {
-    top: hero,
     how: { cx: 0.72, cy: 0.62, s: 0.82, r: 5, o: 1 },
     product: { cx: 0.25, cy: 0.64, s: 0.76, r: -6, o: 1 },
     preview: { cx: 0.94, cy: 0.9, s: 0.44, r: 14, o: 1 },
     pricing: { cx: 0.06, cy: 0.9, s: 0.44, r: -12, o: 1 },
-    start: { cx: 0.5, cy: 0.4 + (cupH * 0.92) / 2 / vh, s: 0.92, r: 0, o: 1 },
   };
 }
 
@@ -66,18 +56,21 @@ interface Layout {
   cupH: number;
   keys: number[];
   poses: Pose[];
-  how: { start: number; end: number };
+  /** linear[i] = segment ending at keys[i] tracks the page 1:1 instead of easing. */
+  linear: boolean[];
 }
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-function interpolatePose(y: number, keys: number[], poses: Pose[]): Pose {
+function interpolatePose(y: number, l: Pick<Layout, 'keys' | 'poses' | 'linear'>): Pose {
+  const { keys, poses, linear } = l;
   if (!keys.length) return poses[0] ?? { cx: 0.5, cy: 0.8, s: 1, r: 0, o: 1 };
   if (y <= keys[0]!) return poses[0]!;
   for (let i = 1; i < keys.length; i++) {
     if (y <= keys[i]!) {
       const span = keys[i]! - keys[i - 1]!;
-      const t = span <= 0 ? 1 : ease((y - keys[i - 1]!) / span);
+      const raw = span <= 0 ? 1 : (y - keys[i - 1]!) / span;
+      const t = linear[i] ? raw : ease(raw);
       const a = poses[i - 1]!;
       const b = poses[i]!;
       return {
@@ -92,30 +85,84 @@ function interpolatePose(y: number, keys: number[], poses: Pose[]): Pose {
   return poses[poses.length - 1]!;
 }
 
+/** Document-relative top of an element, ignoring CSS transforms (so reveal animations don't skew it). */
+function docTop(el: HTMLElement): number {
+  let y = 0;
+  for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) y += n.offsetTop;
+  return y;
+}
+
+function docBottom(id: string): number | null {
+  const el = document.getElementById(id);
+  return el ? docTop(el) + el.offsetHeight : null;
+}
+
+/** Space the steam needs above the lid, for a photo rendered `h` px tall. */
+const steamRoom = (h: number) => (PHOTO.lidTop - PHOTO.steamTop) * h + 12;
+
+/** Centre of the photo (viewport px) when its lid must sit at `lidY` and it is rendered at `h` px. */
+const centreForLid = (lidY: number, h: number) => lidY - PHOTO.lidTop * h + h / 2;
+
 function measure(reduced: boolean): Layout {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // Height of the whole photo (cup + hand + forearm); the cup itself is ~53% of it.
-  const cupH = vw < 768 ? Math.min(vh * 0.66, (vw * 0.98) / CUP_ASPECT) : Math.min(vh * 0.86, 1000);
-  const poseMap = posesFor(vw, vh, cupH, reduced);
+  const mobile = vw < 768;
+
+  // Hero: the cup sits under the headline + pills (never behind them), sized so the whole cup
+  // stays above the fold. The photo height is `cupH`; the cup body is ~53% of it.
+  const copyBottom = docBottom('hero-copy') ?? vh * 0.4;
+  const cap = mobile ? Math.min(vh * 0.66, (vw * 0.98) / CUP_ASPECT) : Math.min(vh * 0.86, 1000);
+  const fit = (vh * 0.975 - copyBottom - 12) / (PHOTO.lidTop - PHOTO.steamTop + PHOTO.cupBottom - PHOTO.lidTop);
+  const cupH = Math.max(Math.min(cap, fit), Math.min(cap, vh * 0.42));
+  const hero: Pose = { cx: 0.5, cy: centreForLid(copyBottom + steamRoom(cupH), cupH) / vh, s: 1, r: 0, o: 1 };
+
+  const poseMap = posesFor(vw, reduced);
   const keys: number[] = [0];
-  const poses: Pose[] = [poseMap.top];
-  let how = { start: 0, end: 1 };
+  const poses: Pose[] = [hero];
+  const linear: boolean[] = [false];
+  const push = (key: number, pose: Pose, isLinear = false) => {
+    keys.push(key);
+    poses.push(pose);
+    linear.push(isLinear);
+  };
 
   ORDER.slice(1).forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
-    const top = el.getBoundingClientRect().top + window.scrollY;
+    const top = docTop(el);
     const height = el.offsetHeight;
-    if (id === 'how') how = { start: top, end: top + height - vh };
     const last = keys[keys.length - 1]!;
     const departAt = Math.max(last, top - vh * 0.85);
+
+    if (id === 'start') {
+      // Finale: fitted inside the section, under the CTA buttons and fully above the footer.
+      const ctaBottom = (docBottom('start-copy') ?? top + vh * 0.45) - top;
+      let s = 0.92;
+      for (let i = 0; i < 3; i++) {
+        const lid = ctaBottom + steamRoom(cupH * s);
+        const room = height - 16 - lid; // the hand must end above the section's bottom edge (= footer top)
+        s = Math.min(0.92, Math.max(0.3, room / ((PHOTO.handEnd - PHOTO.lidTop) * cupH)));
+      }
+      const pose: Pose = reduced
+        ? { ...hero, o: 0 }
+        : { cx: 0.5, cy: centreForLid(ctaBottom + steamRoom(cupH * s), cupH * s) / vh, s, r: 0, o: 1 };
+      const arriveAt = Math.max(departAt + 1, top);
+      push(departAt, poses[poses.length - 1]!);
+      push(arriveAt, pose);
+      // Past this point the footer scrolls in: carry the cup up with the page, 1:1.
+      const maxScroll = document.documentElement.scrollHeight - vh;
+      if (maxScroll > arriveAt) push(maxScroll, { ...pose, cy: pose.cy - (maxScroll - arriveAt) / vh }, true);
+      return;
+    }
+
+    const pose = poseMap[id as keyof typeof poseMap];
     const arriveAt = Math.max(departAt + 1, top - vh * 0.08);
     const holdUntil = Math.max(arriveAt + 1, top + height - vh * 0.92);
-    keys.push(departAt, arriveAt, holdUntil);
-    poses.push(poses[poses.length - 1]!, poseMap[id], poseMap[id]);
+    push(departAt, poses[poses.length - 1]!);
+    push(arriveAt, pose);
+    push(holdUntil, pose);
   });
-  return { vw, vh, cupH, keys, poses, how };
+  return { vw, vh, cupH, keys, poses, linear };
 }
 
 // Cup colours are tuned for paper under `overlay` lighting, so they read a touch muted on screen.
@@ -193,7 +240,7 @@ export function CupStage({ step }: { step: number }) {
 
   const pose = useTransform([scrollY, tick] as MotionValue<number>[], ([y]: number[]) => {
     const l = layoutRef.current;
-    return l ? interpolatePose(y ?? 0, l.keys, l.poses) : { cx: 0.5, cy: 0.9, s: 1, r: 0, o: 1 };
+    return l ? interpolatePose(y ?? 0, l) : { cx: 0.5, cy: 0.9, s: 1, r: 0, o: 1 };
   });
 
   const spring = { stiffness: 70, damping: 20, mass: 0.7 };

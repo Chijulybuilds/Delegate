@@ -18,6 +18,14 @@ import photoUrl from './assets/hand-cup.webp';
  */
 
 export const CUP_ASPECT = geometry.width / geometry.height;
+
+/** Landmarks as fractions of the photo's height (for layout maths in CupStage). */
+export const PHOTO = {
+  steamTop: 22 / geometry.height, // highest point the steam reaches
+  lidTop: geometry.lid.top / geometry.height,
+  cupBottom: geometry.cup.bottom / geometry.height,
+  handEnd: 0.86, // below this the forearm has faded out (see armFade)
+};
 /** The photographed paper, slightly richer to survive `overlay` lighting. */
 export const KRAFT = '#A57C4D';
 const { width: W, height: H } = geometry;
@@ -38,8 +46,8 @@ const cupMask: CSSProperties = {
 
 // The forearm is cropped in the photo; fade it out instead of showing a hard edge.
 const armFade: CSSProperties = {
-  maskImage: 'linear-gradient(to bottom, #000 70%, transparent 97%)',
-  WebkitMaskImage: 'linear-gradient(to bottom, #000 70%, transparent 97%)',
+  maskImage: 'linear-gradient(to bottom, #000 66%, transparent 88%)',
+  WebkitMaskImage: 'linear-gradient(to bottom, #000 66%, transparent 88%)',
 };
 
 const FONT = "'Inter Tight Variable', 'Inter Tight', system-ui, sans-serif";
@@ -114,18 +122,18 @@ export const PhotoCup = memo(function PhotoCup({
       <img src={cupShadeUrl} alt="" aria-hidden width={W} height={H} draggable={false} className="absolute inset-0 size-full select-none" style={{ ...cupMask, mixBlendMode: 'overlay' }} />
 
       {steam && (
-        <svg viewBox={`0 0 ${W} ${H}`} className="pointer-events-none absolute inset-0 size-full overflow-visible" aria-hidden>
+        <svg viewBox={`0 0 ${W} ${H}`} className="pointer-events-none absolute inset-0 size-full" aria-hidden>
           <g fill="none" stroke="#a9a9a4" strokeLinecap="round" strokeWidth="8">
             {[
-              { d: 'M512 132 C496 104 530 88 514 56 C504 34 522 16 516 -6', delay: 0 },
-              { d: 'M552 128 C536 98 572 82 554 48 C544 26 562 8 556 -14', delay: 1.1 },
-              { d: 'M592 132 C576 104 610 88 594 56 C584 34 602 16 596 -6', delay: 2.2 },
+              { d: 'M512 134 C498 114 528 102 514 82 C506 68 520 56 516 44', delay: 0 },
+              { d: 'M552 130 C538 110 568 98 554 76 C546 62 560 50 556 38', delay: 1.1 },
+              { d: 'M592 134 C578 114 608 102 594 82 C586 68 600 56 596 44', delay: 2.2 },
             ].map((s) => (
               <motion.path
                 key={s.d}
                 d={s.d}
                 initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: [0, 0.3, 0], y: [14, -12, -30] }}
+                animate={{ opacity: [0, 0.3, 0], y: [10, -4, -16] }}
                 transition={{ duration: 3.4, repeat: Infinity, delay: s.delay, ease: 'easeInOut' }}
               />
             ))}
