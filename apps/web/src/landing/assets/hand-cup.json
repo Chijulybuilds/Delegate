@@ -1,0 +1,17 @@
+{
+  "width": 958,
+  "height": 1278,
+  "cup": {
+    "top": 252,
+    "bottom": 815,
+    "axisX": 541.5,
+    "topLeft": 337,
+    "topRight": 746.0,
+    "bottomLeft": 395,
+    "bottomRight": 688.0
+  },
+  "lid": {
+    "top": 144,
+    "centerX": 542.5
+  }
+}

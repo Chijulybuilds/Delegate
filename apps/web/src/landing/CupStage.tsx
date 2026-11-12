@@ -10,11 +10,12 @@ import {
   type MotionValue,
 } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { HandCup, type CupTicket } from './HandCup';
+import { CUP_ASPECT, KRAFT, PhotoCup, type CupPrint } from './PhotoCup';
 
 /**
- * The one motion that runs through the whole landing page: a single hand-held cup that
- * travels from section to section as you scroll, and changes state inside "How it works".
+ * The one motion that runs through the whole landing page: a single hand-held cup (a real
+ * photo, see PhotoCup) that travels from section to section as you scroll and changes colour
+ * through the task states inside "How it works".
  */
 
 export type SectionId = 'top' | 'how' | 'product' | 'preview' | 'pricing' | 'start';
@@ -31,8 +32,9 @@ interface Pose {
 
 function posesFor(vw: number, vh: number, cupH: number, reduced: boolean): Record<SectionId, Pose> {
   const mobile = vw < 768;
-  // Hero: lid starts at ~40% (desktop) / ~48% (mobile) of the viewport, hand runs off the bottom.
-  const heroTop = mobile ? 0.46 : 0.4;
+  // Hero: the photo's top sits at 29% (desktop) / 43% (mobile) of the viewport, so the lid lands
+  // just under the headline and the forearm runs off the bottom edge.
+  const heroTop = mobile ? 0.43 : 0.335;
   const hero: Pose = { cx: 0.5, cy: heroTop + cupH / 2 / vh, s: 1, r: 0, o: 1 };
   if (reduced) {
     const hidden = { ...hero, o: 0 };
@@ -41,7 +43,7 @@ function posesFor(vw: number, vh: number, cupH: number, reduced: boolean): Recor
   if (mobile) {
     return {
       top: hero,
-      how: { cx: 0.5, cy: 0.8, s: 0.74, r: 3, o: 1 },
+      how: { cx: 0.5, cy: 0.82, s: 0.78, r: 3, o: 1 },
       product: { cx: 0.9, cy: 0.93, s: 0.34, r: -10, o: 1 },
       preview: { cx: 0.92, cy: 0.94, s: 0.3, r: 12, o: 1 },
       pricing: { cx: 0.08, cy: 0.94, s: 0.3, r: -12, o: 1 },
@@ -50,11 +52,11 @@ function posesFor(vw: number, vh: number, cupH: number, reduced: boolean): Recor
   }
   return {
     top: hero,
-    how: { cx: 0.72, cy: 0.56, s: 0.8, r: 5, o: 1 },
-    product: { cx: 0.25, cy: 0.58, s: 0.74, r: -6, o: 1 },
-    preview: { cx: 0.94, cy: 0.84, s: 0.42, r: 14, o: 1 },
-    pricing: { cx: 0.06, cy: 0.84, s: 0.42, r: -12, o: 1 },
-    start: { cx: 0.5, cy: 0.47 + (cupH * 0.92) / 2 / vh, s: 0.92, r: 0, o: 1 },
+    how: { cx: 0.72, cy: 0.62, s: 0.82, r: 5, o: 1 },
+    product: { cx: 0.25, cy: 0.64, s: 0.76, r: -6, o: 1 },
+    preview: { cx: 0.94, cy: 0.9, s: 0.44, r: 14, o: 1 },
+    pricing: { cx: 0.06, cy: 0.9, s: 0.44, r: -12, o: 1 },
+    start: { cx: 0.5, cy: 0.4 + (cupH * 0.92) / 2 / vh, s: 0.92, r: 0, o: 1 },
   };
 }
 
@@ -93,7 +95,8 @@ function interpolatePose(y: number, keys: number[], poses: Pose[]): Pose {
 function measure(reduced: boolean): Layout {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const cupH = vw < 768 ? Math.min(vh * 0.6, vw * 1.35) : Math.min(vh * 0.8, 900);
+  // Height of the whole photo (cup + hand + forearm); the cup itself is ~53% of it.
+  const cupH = vw < 768 ? Math.min(vh * 0.66, (vw * 0.98) / CUP_ASPECT) : Math.min(vh * 0.86, 1000);
   const poseMap = posesFor(vw, vh, cupH, reduced);
   const keys: number[] = [0];
   const poses: Pose[] = [poseMap.top];
@@ -115,12 +118,13 @@ function measure(reduced: boolean): Layout {
   return { vw, vh, cupH, keys, poses, how };
 }
 
-const STATES: Array<{ sleeve: string; ticket: CupTicket }> = [
-  { sleeve: '#2a2a2a', ticket: { status: 'Open', title: 'Finalize Q4 board deck', meta: 'Assigned 08:02 · Ada → Kemi', color: '#E5484D' } },
-  { sleeve: '#D64545', ticket: { status: 'Open', title: 'Finalize Q4 board deck', meta: 'Assigned 08:02 · due 17:00', color: '#E5484D' } },
-  { sleeve: '#D99A1E', ticket: { status: 'In progress', title: 'Finalize Q4 board deck', meta: 'Started 08:41 · Kemi', color: '#E8A317' } },
-  { sleeve: '#2F9E6A', ticket: { status: 'Executed', title: 'Finalize Q4 board deck', meta: 'Proof attached · AI check passed', color: '#2F9E6A' } },
-  { sleeve: '#2B6FE0', ticket: { status: 'Audited ✓', title: 'Finalize Q4 board deck', meta: 'Approved 15:12 · by Ada', color: '#2B7FFF' } },
+// Cup colours are tuned for paper under `overlay` lighting, so they read a touch muted on screen.
+const STATES: Array<{ cup: string; print: CupPrint }> = [
+  { cup: KRAFT, print: { status: 'Open', meta: 'Assigned 08:02' } }, // natural kraft, as photographed
+  { cup: '#C9463E', print: { status: 'Open', meta: 'Due 17:00' } },
+  { cup: '#D3952A', print: { status: 'In progress', meta: 'Started 08:41' } },
+  { cup: '#2E8D5E', print: { status: 'Executed', meta: 'Proof attached' } },
+  { cup: '#2C5EC6', print: { status: 'Audited ✓', meta: 'Approved 15:12' } },
 ];
 
 /** 0 = hero (neutral), 1..4 = the four lifecycle states inside "How it works". */
@@ -203,24 +207,24 @@ export function CupStage({ step }: { step: number }) {
 
   const state = STATES[Math.min(step, STATES.length - 1)]!;
   // After the lifecycle section the cup stays audited (blue) for the rest of the story.
-  const sleeve = useSpring(0, { stiffness: 120, damping: 24 });
+  const stepSpring = useSpring(0, { stiffness: 120, damping: 24 });
   useEffect(() => {
-    sleeve.set(step);
-  }, [step, sleeve]);
-  const sleeveColor = useTransform(sleeve, [0, 1, 2, 3, 4], STATES.map((s) => s.sleeve));
+    stepSpring.set(step);
+  }, [step, stepSpring]);
+  const cupColor = useTransform(stepSpring, [0, 1, 2, 3, 4], STATES.map((s) => s.cup));
 
   return (
     <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden data-testid="cup-stage">
       <motion.div
         className="absolute left-1/2 top-1/2 will-change-transform"
-        style={{ x, y, scale, rotate, opacity, height: cupH, width: cupH * (480 / 760), marginLeft: -(cupH * (480 / 760)) / 2, marginTop: -cupH / 2 }}
+        style={{ x, y, scale, rotate, opacity, height: cupH, width: cupH * CUP_ASPECT, marginLeft: -(cupH * CUP_ASPECT) / 2, marginTop: -cupH / 2 }}
       >
         <motion.div
           className="size-full"
           animate={reduced ? undefined : { y: [0, -9, 0], rotate: [0, -0.8, 0] }}
           transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
         >
-          <HandCup className="size-full drop-shadow-[0_30px_40px_rgba(0,0,0,0.12)]" sleeveColor={sleeveColor} ticket={state.ticket} steam={!reduced} />
+          <PhotoCup className="h-full" color={cupColor} print={state.print} steam={!reduced} />
         </motion.div>
       </motion.div>
     </div>

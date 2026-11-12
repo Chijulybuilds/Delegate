@@ -6,7 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useToast } from '../components/Toast';
 import { Avatar, Button, cx, EASE, Field, FullPageSpinner, Input, Logo } from '../components/ui';
-import { HandCup } from '../landing/HandCup';
+import { KRAFT, PhotoCup } from '../landing/PhotoCup';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -204,16 +204,16 @@ export default function LoginPage() {
       <div className="relative hidden overflow-hidden border-l border-line bg-milk-2 lg:block">
         <div className="dot-grid absolute inset-0 opacity-70" />
         <motion.div
-          className="absolute bottom-[-12%] left-1/2 h-[96%] -translate-x-1/2"
+          className="absolute bottom-[-14%] left-1/2 h-[100%] -translate-x-1/2"
           initial={{ y: 120, opacity: 0, rotate: -6 }}
           animate={{ y: 0, opacity: 1, rotate: 0 }}
           transition={{ type: 'spring', stiffness: 40, damping: 14, delay: 0.1 }}
         >
           <motion.div className="h-full" animate={{ y: [0, -8, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}>
-            <HandCup
-              className="h-full drop-shadow-[0_30px_40px_rgba(0,0,0,0.12)]"
-              sleeveColor="#2a2a2a"
-              ticket={{ status: signup ? 'Open' : 'Welcome back', title: signup ? 'Set up your workspace' : 'Your board is ready', meta: 'Delegate · today', color: '#E5484D' }}
+            <PhotoCup
+              className="h-full"
+              color={KRAFT}
+              print={{ status: signup ? 'Open' : 'Welcome back', meta: signup ? 'Your workspace' : 'Board ready' }}
             />
           </motion.div>
         </motion.div>

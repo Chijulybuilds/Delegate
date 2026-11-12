@@ -10,8 +10,10 @@ test.describe('Landing page', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('engine for lean teams');
     await expect(page.getByText('Real-time accountability')).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Pricing' })).toBeVisible();
-    // The cup is decorative for assistive tech (aria-hidden stage) but must be on screen.
-    await expect(page.getByTestId('cup-stage').locator('svg[aria-label*="hand in a suit sleeve"]')).toBeVisible();
+    // The cup is decorative for assistive tech (aria-hidden stage) but must be on screen and loaded.
+    const photo = page.getByTestId('cup-stage').locator('img[alt="A hand holding a Delegate coffee cup"]');
+    await expect(photo).toBeVisible();
+    expect(await photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
     expect(errors).toEqual([]);
   });
 

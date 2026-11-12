@@ -12,7 +12,7 @@
 
 | Area | Highlights |
 |---|---|
-| **Landing page** | Milk/light-grey studio look in Inter Tight. One persistent motion carries the whole page: a suited hand presenting a Delegate coffee cup rises in the hero, then travels with the scroll. In *How it works* its sleeve and order ticket step through Open → In progress → Executed → Audited ✓. It comes back blue for the final call to action. Respects `prefers-reduced-motion`. |
+| **Landing page** | Milk/light-grey studio look in Inter Tight. One persistent motion carries the whole page: a photographed hand presenting a Delegate-branded coffee cup rises in the hero, then travels with the scroll. In *How it works* the cup itself changes colour, keeping the photo's lighting, and its printed ticket steps through Open → In progress → Executed → Audited ✓. It comes back blue for the final call to action. Respects `prefers-reduced-motion`. |
 | **Workspace app** (`/app`) | Live board with four lanes, department and person filters, and quick actions; task drawer with proof of work (link, note, file), a chat thread per task and the activity history; **Heartbeat** feed; **Velocity Pulse** (red → green time, on-time rate, leaderboard); **Standup-in-a-Box**; **Blocker Ping** banner; team, roles and invite codes. |
 | **Platform console** (`/admin`) | Reached only by typing the URL, with its own credentials and token. Platform KPIs, workspaces (plan, suspend or reactivate), users (suspend or restore) and the global ledger. |
 | **API** (Node + TypeScript + Express 5) | The task state machine is enforced on the server, managers can't audit their own work, tenant isolation, an append-only ledger, optional AI proof verification (Claude), a standup cron and Resend email. |
@@ -61,7 +61,7 @@ When you're ready for real Google sign-in and a real database, follow **[docs/SE
 ```
 apps/
   web/        React 19 · Vite 7 · Tailwind CSS 4 · Motion · TanStack Query · React Router
-    src/landing/   LandingPage, CupStage (scroll engine), HandCup (SVG), BoardPreview
+    src/landing/   LandingPage, CupStage (scroll engine), PhotoCup (photo + live cup colour), BoardPreview
     src/app/       AppShell, Board, TaskDrawer, Heartbeat, Velocity, Standup, Team, Settings
     src/admin/     AdminRoot: separate login + console
   api/        Node · Express 5 · TypeScript · Zod · jose · supabase-js
@@ -73,7 +73,28 @@ packages/
 supabase/
   migrations/ Schema, RLS, ledger immutability, storage bucket, realtime
 e2e/          Playwright specs (landing, workspace loop, admin, mobile)
+scripts/
+  hero-photo/ process.py: turns the source photo into the hero assets (see below)
 ```
+
+## The hero photo
+
+`scripts/hero-photo/process.py` turns `scripts/hero-photo/source.jpg` (a hand-holding-a-cup mockup photo) into the assets in `apps/web/src/landing/assets/`. It:
+
+- cuts the hand and cup out of the studio background, with clean edges
+- re-tones the hand to a deep brown skin tone, keeping the photo's own light and shadow
+- removes the mockup's original printing and rebuilds the cup as a clean, lit cylinder
+- exports a cup mask and a lighting map
+
+In the browser, `PhotoCup` then fills the cup with the current state colour, prints the Delegate design on it, and lays the photo's lighting back on top. The fingers stay in front of the print.
+
+To use a sharper or different photo of the same shot, replace `source.jpg` (higher resolution looks better) and run:
+
+```bash
+python3 scripts/hero-photo/process.py
+```
+
+It needs Python 3.9+ with `numpy` and `pillow`.
 
 **Auth model.** Customers sign in with Google through Supabase Auth. The browser sends the Supabase access token to the API, which verifies it (JWKS, the legacy shared secret, or a call to Supabase as a fallback), loads the profile and membership, and enforces roles. Platform operators use `/admin` with separate credentials and a separately signed token. Neither kind of token works on the other side.
 
