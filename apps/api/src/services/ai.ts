@@ -44,7 +44,7 @@ export class ClaudeProofVerifier implements ProofVerifier {
     apiKey: string,
     private model: string,
   ) {
-    this.client = new Anthropic({ apiKey, timeout: 20_000, maxRetries: 1 });
+    this.client = new Anthropic({ apiKey, timeout: 15_000, maxRetries: 1 }); // worst case ~30 s, inside the 60 s function limit
   }
 
   async check(input: ProofCheckInput): Promise<ProofCheckResult | null> {

@@ -1,6 +1,28 @@
 # Setup guide
 
-This walks you from a fresh clone to Google sign-in on a real Supabase database. You can stop after step 1: the app runs fully on `localhost:3000` in **demo mode** with a seeded workspace, before you configure anything.
+This takes you from a fresh clone to a real product: Google sign-in, a Supabase database, payments, chat apps and automations. You can stop after step 1. The whole app, including billing, Slack, WhatsApp and playbooks, runs on `localhost:3000` in **demo mode**, with every provider simulated, before you create a single account.
+
+| Guide | What it covers |
+|---|---|
+| **This file** | Local run, Supabase, Google Cloud (sign-in + Drive), admin console, tests |
+| [INTEGRATIONS.md](INTEGRATIONS.md) | Stripe, Paystack, Slack, Microsoft Teams, WhatsApp, GitHub, Resend, Anthropic |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Vercel (recommended), the automation scheduler, the go-live checklist, Hostinger |
+
+## Accounts you will need
+
+| Service | Needed for | Required? | Cost to start |
+|---|---|---|---|
+| Supabase | Database, Google sign-in, file storage | **Yes** | Free tier |
+| Google Cloud | "Continue with Google", Drive proof | **Yes** (sign-in) | Free |
+| Vercel | Hosting the app + API | **Yes** (or Hostinger) | Free (Hobby) |
+| Stripe | Card payments worldwide | One of Stripe / Paystack | Per transaction |
+| Paystack | ₦ cards, bank transfer, USSD | One of Stripe / Paystack | Per transaction |
+| Slack | Slack notifications + `/delegate` | Optional | Free |
+| Microsoft Teams | Teams notifications + `@Delegate` | Optional | Free (uses your Microsoft 365) |
+| Meta (WhatsApp) | WhatsApp tasks, reminders, quick actions | Optional | Per message (Meta pricing) |
+| GitHub | Auto-proof from merged PRs | Optional | Free |
+| Resend | Morning brief by email | Optional | Free tier |
+| Anthropic | AI proof checks | Optional | Pay as you go |
 
 ---
 
@@ -21,13 +43,21 @@ Open **http://localhost:3000**.
 | What | Where |
 |---|---|
 | Landing page | `http://localhost:3000/` |
-| Customer sign-in | `http://localhost:3000/login`: pick a demo persona (owner, manager or staff) or start a fresh workspace |
+| Customer sign-in | `http://localhost:3000/login`: pick a demo persona (Ada = owner, Kemi = manager, Tunde = staff) or start a new workspace |
 | Workspace app | `http://localhost:3000/app` |
 | Platform admin console | `http://localhost:3000/admin`: dev credentials `admin@delegate.local` / `delegate-admin` (dev only, refused in production) |
 
-`npm run dev` runs two processes: Vite on **:3000** (hot reload) and the API on **:4000**. Vite proxies `/api` to the API, so the browser only ever talks to `localhost:3000`.
+Try these in demo mode:
 
-To run the **production build** exactly as it will be deployed (one Node process serving both the app and the API):
+- **Settings → Billing:** start a new workspace (it gets a 14-day Team trial), click **Upgrade**, then complete the simulated checkout.
+- **Settings → Integrations:**
+  - Click **Add to Slack**. It connects a simulated Slack workspace.
+  - Switch WhatsApp on and use the **simulator**: `list`, `new Restock paper @Tunde tomorrow !high`, `start DLG-20`.
+  - **Recent deliveries** shows every message that would have gone out.
+- **Playbooks:** create a recurring checklist and press **Run now**.
+- **Settings → Automations:** press **Run checks now** to fire escalations and overdue alerts.
+
+`npm run dev` runs Vite on **:3000** (hot reload) and the API on **:4000**. Vite proxies `/api` to the API, so the browser only ever talks to `localhost:3000`. The production build is one Node process, exactly as deployed:
 
 ```bash
 npm run build
@@ -37,124 +67,149 @@ npm run build
 npm start
 ```
 
-That also serves **http://localhost:3000**.
-
 Demo data lives in memory and resets when the API restarts.
 
 ---
 
-## 2. Create the Supabase project
+## 2. Supabase (database, sign-in, storage)
 
-1. Go to [supabase.com](https://supabase.com) → **New project**. Pick the region closest to your users.
-2. Open **SQL Editor → New query**, paste the contents of [`supabase/migrations/20261112000000_init.sql`](../supabase/migrations/20261112000000_init.sql) and **Run**.
+1. Go to [supabase.com](https://supabase.com) → **New project**. Pick the region closest to your users (e.g. *West EU (Ireland)* or *Frankfurt* for Nigeria). Save the database password somewhere safe.
+2. Open **SQL Editor → New query** and run the two migrations **in order**. Paste each file and press **Run**:
+   1. [`supabase/migrations/20261112000000_init.sql`](../supabase/migrations/20261112000000_init.sql): workspaces, tasks, the append-only ledger, Row Level Security, the `proofs` storage bucket, and Realtime.
+   2. [`supabase/migrations/20261113000000_saas.sql`](../supabase/migrations/20261113000000_saas.sql): task numbers (`DLG-12`), subscriptions, integrations, notifications, playbooks, escalation fields and the webhook de-duplication table.
+
    *(With the Supabase CLI instead: `supabase link --project-ref <ref>` then `supabase db push`.)*
-
-   This creates:
-   - tables: `profiles`, `organizations`, `departments`, `memberships`, `tasks`, `task_proofs`, `task_comments`, `task_events`
-   - a trigger that creates a `profiles` row for every new Google sign-in
-   - **Row Level Security** on every table: signed-in users can *read* only their own workspace; nobody can write from the browser (the API does all writes with the service key)
-   - an **append-only ledger**: `task_events` rejects UPDATE, DELETE and TRUNCATE, even from the service role. The only exception is `public.purge_organization(id)`, for deliberate tenant deletion.
-   - a private Storage bucket `proofs` (10 MB per file) for proof-of-work files
-   - Realtime on `task_events`, so boards update instantly
-3. Open **Project Settings → API Keys** (or **API** on older projects) and copy:
+3. Open **Project Settings → API Keys** and copy:
    - **Project URL** → `SUPABASE_URL`
-   - **Publishable / anon key** → `SUPABASE_ANON_KEY` (safe for the browser)
-   - **Secret / service_role key** → `SUPABASE_SERVICE_ROLE_KEY` (**server only**: never commit it or put it in a `VITE_` variable)
-4. Session tokens: new projects sign them with asymmetric keys, and the API verifies these automatically through the project's JWKS. On a legacy project that uses the shared JWT secret, you can also set `SUPABASE_JWT_SECRET`, which lets the API verify tokens locally without a network call. This is optional.
-5. Open **Authentication → URL Configuration**:
-   - **Site URL**: `http://localhost:3000` for now (change it to your production URL when you deploy)
-   - **Redirect URLs**: add `http://localhost:3000/auth/callback` and, later, `https://YOUR-DOMAIN/auth/callback`
+   - **Publishable key** (or legacy *anon*) → `SUPABASE_ANON_KEY`
+   - **Secret key** (or legacy *service_role*) → `SUPABASE_SERVICE_ROLE_KEY`. This one is **server only**: never commit it or put it in a `VITE_` variable.
+4. Open **Authentication → URL Configuration**:
+   - **Site URL**: `http://localhost:3000` for now, then your production URL at launch.
+   - **Redirect URLs**: add `http://localhost:3000/auth/callback` now, and `https://YOUR-DOMAIN/auth/callback` when you deploy.
+5. Open **Authentication → Sign In / Providers → Google**. Leave this page open: step 3 gives you the Client ID and secret to paste here, and this page shows the **Callback URL** you need in Google.
+6. **Storage**: nothing to do. The migration created the private `proofs` bucket (10 MB per file). Proof files go straight from the browser to Storage through signed upload URLs, so the API never handles large uploads.
+7. **Database → Extensions**: enable **pg_cron** and **pg_net**. The automation scheduler uses them after you deploy (see [DEPLOYMENT.md](DEPLOYMENT.md#3-turn-on-the-automation-scheduler)).
+
+> Token verification: new projects sign sessions with asymmetric keys, which the API verifies automatically through the project's JWKS. Legacy projects that use a shared JWT secret can also set `SUPABASE_JWT_SECRET` (optional).
 
 ---
 
-## 3. Create the Google OAuth client (Google Cloud Console)
+## 3. Google Cloud Console (sign-in + Drive proof)
 
-1. Open [console.cloud.google.com](https://console.cloud.google.com) → create a project, e.g. **Delegate**.
-2. Go to **APIs & Services → OAuth consent screen** (shown as **Google Auth Platform** in newer consoles):
-   - **Branding**: app name *Delegate*, support email, logo. Under **Authorized domains** add your production domain and `YOUR-PROJECT-REF.supabase.co`.
-   - **Audience**: *External*. While it is in *Testing*, only the test users you list can sign in. **Publish** the app before launch.
-   - **Data access**: the scopes `openid`, `.../auth/userinfo.email` and `.../auth/userinfo.profile` are all Delegate needs.
-3. **Clients → Create client → Web application**:
+Use **one** Google Cloud project for both.
+
+### 3a. "Continue with Google" (required)
+
+1. Open [console.cloud.google.com](https://console.cloud.google.com) → project picker → **New project** → name it *Delegate* → **Create**.
+2. Go to **APIs & Services → OAuth consent screen**. Newer consoles call it **Google Auth Platform**. Click **Get started**:
+   - **App information**: app name *Delegate*, your support email.
+   - **Audience**: *External*.
+   - **Contact information**: your email → **Create**.
+3. Under **Branding**:
+   - Upload a logo (optional).
+   - Add your home page, privacy policy and terms URLs (required before publishing).
+   - **Authorized domains**: add your production domain (e.g. `yourdomain.com` or `your-app.vercel.app`) and `supabase.co`.
+4. Under **Data access → Add or remove scopes**, tick:
+   - `openid`
+   - `.../auth/userinfo.email`
+   - `.../auth/userinfo.profile`
+   - `.../auth/drive.file` (only if you will use Drive proof; it is a *non-sensitive* scope, so no Google security review is needed)
+
+   Then **Update** → **Save**.
+5. Under **Clients → Create client**, choose **Web application**, name it *Delegate web*, then add:
    - **Authorized JavaScript origins**: `http://localhost:3000` and `https://YOUR-DOMAIN`
-   - **Authorized redirect URIs**: the callback URL shown in Supabase under **Authentication → Sign In / Providers → Google**. It looks like `https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback`.
-4. Copy the **Client ID** and **Client secret** into **Supabase → Authentication → Sign In / Providers → Google**, enable it and save.
+   - **Authorized redirect URIs**: the **Callback URL** from Supabase (step 2.5). It looks like `https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback`.
 
-Flow: the browser goes to Google, then to Supabase (`/auth/v1/callback`), then back to `/auth/callback` in Delegate. Delegate's API then verifies the Supabase session token on every request.
+   Press **Create**, then copy the **Client ID** and **Client secret**.
+6. Paste them into **Supabase → Authentication → Sign In / Providers → Google**, enable it and save.
+7. Under **Audience**: while the app is in *Testing*, only the test users you add can sign in. Click **Publish app** before launch. With only the scopes above, publishing does not need a Google review. Brand verification takes a few days if Google asks for it.
+
+Flow: browser → Google → Supabase (`/auth/v1/callback`) → Delegate (`/auth/callback`). The API verifies the Supabase token on every request.
+
+### 3b. Google Drive proof (optional, recommended)
+
+Assignees can attach a Google Doc, Sheet or Slides file as proof. Delegate checks with Google that the assignee actually edited it after the task started, and shows a **Verified** badge.
+
+1. Go to **APIs & Services → Library** and enable **Google Drive API** and **Google Picker API**.
+2. Go to **APIs & Services → Credentials → Create credentials → API key** and copy the key. Then click **Edit API key**:
+   - **Application restrictions → Websites**: add `http://localhost:3000/*` and `https://YOUR-DOMAIN/*`.
+   - **API restrictions → Restrict key**: tick **Google Picker API** and **Google Drive API** → **Save**.
+3. Find the **Project number** on the Cloud **Dashboard** (or ⋮ → Project settings). It is a number, not the project ID.
+4. Set:
+
+   ```dotenv
+   GOOGLE_CLIENT_ID=<the Web client ID from 3a — the same client works>
+   GOOGLE_API_KEY=<the restricted API key>
+   GOOGLE_PROJECT_NUMBER=<project number>
+   ```
+
+When it is on, **Submit proof** shows **Pick from Google Drive**. The file is checked on the server: it must have been modified after the task started, by the assignee (or a workspace owner).
 
 ---
 
-## 4. Point the app at Supabase
+## 4. Environment file and admin console
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in at least:
+Minimum for a real (non-demo) setup:
 
 ```dotenv
 SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
 SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 
+APP_ENCRYPTION_KEY=...       # openssl rand -hex 32  (never change it after launch)
+CRON_SECRET=...              # openssl rand -hex 24
+
 ADMIN_EMAIL=you@yourcompany.com
-ADMIN_PASSWORD_HASH=...      # generate below
-ADMIN_JWT_SECRET=...         # long random string
-```
-
-Generate the admin password hash and a signing secret:
-
-```bash
-npm run admin:hash -- "a-long-unique-admin-password"
+ADMIN_PASSWORD_HASH=...      # npm run admin:hash -- "a-long-unique-admin-password"
+ADMIN_JWT_SECRET=...         # openssl rand -hex 32
 ```
 
 ```bash
 openssl rand -hex 32
 ```
 
-Restart `npm run dev`. The sign-in page now shows a working **Continue with Google** button, and the demo personas disappear. Data is stored in Supabase.
-
----
-
-## 5. The admin console (`/admin`)
-
-- It is **not linked from anywhere**: not the landing page, not sign-in, not the app. Operators reach it by typing `/admin`.
-- It uses **separate credentials** (`ADMIN_EMAIL` + bcrypt `ADMIN_PASSWORD_HASH`) and a **separate signing secret** (`ADMIN_JWT_SECRET`, 8-hour tokens, kept in `sessionStorage`). A customer's Google session can never open it, and an admin token can never act inside a customer workspace. The E2E tests check both directions.
-- Logins are rate limited to 10 attempts per 15 minutes per IP, and the page carries `noindex`.
-- In production the server refuses to start admin with a plain-text password: it must be the hash.
-
----
-
-## 6. Optional integrations
-
-| Feature | Env | Notes |
-|---|---|---|
-| **AI proof verification** | `ANTHROPIC_API_KEY` (and optionally `AI_MODEL`, default `claude-opus-5-5`) | When a task is submitted, Claude compares the proof with the brief and attaches an advisory verdict (looks complete, needs a look, doesn't match). Managers still make the final call. If the AI call fails, the submission still goes through. |
-| **8:00 AM Standup-in-a-Box email** | `RESEND_API_KEY`, `MAIL_FROM`, `CRON_SECRET` | Schedule `POST /api/cron/standup` with header `x-cron-secret: <CRON_SECRET>` (crontab, Vercel Cron or any scheduler). The brief is always visible on the **Standup** page, even without email. |
-
-Example crontab (server time zone):
-
-```cron
-0 8 * * 1-5 curl -fsS -X POST -H "x-cron-secret: YOUR_CRON_SECRET" https://YOUR-DOMAIN/api/cron/standup
+```bash
+npm run admin:hash -- "a-long-unique-admin-password"
 ```
 
+Restart `npm run dev`. The sign-in page now shows **Continue with Google**, the demo personas disappear, and data lives in Supabase. Payments and chat apps are no longer simulated. Each one switches on as you add its keys ([INTEGRATIONS.md](INTEGRATIONS.md)).
+
+**The admin console (`/admin`):**
+
+- **Hidden:** it is linked from nowhere (not the landing page, not sign-in, not the app). Operators type `/admin`.
+- **Separate credentials:** it uses its own login and signing secret, with 8-hour tokens. A customer's Google session can never open it, and an admin token can never act inside a workspace.
+- **Hardened:** logins are rate limited to 10 per 15 minutes per IP, the page is `noindex`, and production refuses a plain-text password.
+- **What you can do there:** see every workspace's plan, billing status and seats, and grant a plan manually (e.g. an enterprise invoice customer).
+
 ---
 
-## 7. Tests
+## 5. Tests
 
 ```bash
 npm test
 ```
 
-runs the API suite: the state machine, permissions, tenant isolation, admin separation and cron.
+runs the API suite (42 tests):
+- the state machine, permissions, tenant isolation and admin separation
+- billing: trial, Starter limits, Stripe and Paystack webhook signatures and replays
+- Slack, Teams, WhatsApp and GitHub webhooks, including forged-signature rejection
+- escalations, playbooks, the morning brief, the cron endpoint and Drive verification
 
 ```bash
 npx playwright install chromium
 ```
 
-is needed once per machine before the end-to-end tests.
+(once per machine), then
 
 ```bash
 npm run test:e2e
 ```
 
-builds production, starts it on `:3100` with a fresh demo workspace, and runs the browser tests: the landing page and its cup animation, the full Red → Amber → Green → Blue loop, blockers, chat, filters, onboarding, invite codes and the admin console, on desktop and mobile.
+That builds production, starts it on `:3100` with a fresh demo workspace and simulated providers, and runs 31 browser tests on desktop and mobile:
+- landing page, the full accountability loop, blockers, chat, filters, onboarding and the admin console
+- trial → checkout → Team, the WhatsApp simulator, Slack connect + test message, GitHub webhook setup
+- playbooks, the notification bell, glance filters and automations

@@ -29,7 +29,7 @@ export type DomainEvent =
 interface Plan {
   inApp: Array<{ userId: string; type: NotificationType; title: string; body: string }>;
   channel: { event: ChannelEvent; msg: ChannelMessage } | null;
-  whatsapp: Array<{ userId: string; template: string; params: string[]; summary: string }>;
+  whatsapp: Array<{ userId: string; template: string; params: string[]; summary: string; buttons?: string[] }>;
 }
 
 export interface SlackSecret {
@@ -91,6 +91,8 @@ export class Notifier {
     const { task } = evt;
     const ref = taskRef(task.seq);
     const url = this.taskUrl(task);
+    // Due times in the workspace's own time zone, e.g. "Thu 12 Nov, 18:00".
+    const due = task.dueAt ? formatLocal(task.dueAt, evt.org.timezone) : null;
     const out: Plan = { inApp: [], channel: null, whatsapp: [] };
     const notActor = (ids: string[], actor: string | null) => [...new Set(ids)].filter((id) => id !== actor);
 
@@ -101,13 +103,15 @@ export class Notifier {
           out.whatsapp.push({
             userId: task.assigneeId,
             template: WHATSAPP_TEMPLATES.assigned,
-            params: [ref, task.title, name(evt.actorId), task.dueAt ? new Date(task.dueAt).toUTCString().slice(0, 22) : 'no due date'],
+            params: [ref, task.title, name(evt.actorId), due ?? 'no due date'],
             summary: `Assigned ${ref}`,
+            // Quick-reply button on the template: tapping "Start" sends this payload back to us.
+            buttons: [`start ${ref}`],
           });
         }
         out.channel = {
           event: 'assigned',
-          msg: { title: `${name(evt.actorId)} assigned ${ref} to ${name(task.assigneeId)}`, body: task.title, status: 'open', url, facts: task.dueAt ? [['Due', new Date(task.dueAt).toUTCString().slice(0, 22)]] : [] },
+          msg: { title: `${name(evt.actorId)} assigned ${ref} to ${name(task.assigneeId)}`, body: task.title, status: 'open', url, facts: due ? [['Due', due]] : [] },
         };
         break;
       }
@@ -220,18 +224,18 @@ export class Notifier {
       items.map(async (item) => {
         const profile = await this.store.getProfile(item.userId);
         if (!profile?.phone) return;
-        await this.whatsappTemplate(org.id, profile.phone, item.template, item.params, item.summary);
+        await this.whatsappTemplate(org.id, profile.phone, item.template, item.params, item.summary, item.buttons);
       }),
     );
   }
 
-  async whatsappTemplate(orgId: string, phone: string, template: string, params: string[], summary: string) {
+  async whatsappTemplate(orgId: string, phone: string, template: string, params: string[], summary: string, buttons: string[] = []) {
     const log = (status: 'sent' | 'failed' | 'skipped' | 'simulated', error: string | null = null) =>
       this.store.logOutbound({ orgId, channel: 'whatsapp', target: mask(phone, 3), summary, status, error });
     if (this.config.simulateProviders) return log('simulated');
     if (!this.whatsapp) return log('skipped', 'WhatsApp is not configured on this server');
     try {
-      await this.whatsapp.sendTemplate(phone, template, params);
+      await this.whatsapp.sendTemplate(phone, template, params, buttons);
       await log('sent');
     } catch (error) {
       await log('failed', error instanceof ChannelError ? error.message : 'Delivery failed');
@@ -253,5 +257,13 @@ export class Notifier {
 
   async notify(orgId: string, list: Array<Omit<AppNotification, 'id' | 'createdAt' | 'readAt' | 'orgId'>>) {
     await this.store.insertNotifications(list.map((n) => ({ ...n, orgId })));
+  }
+}
+
+export function formatLocal(iso: string, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
+  } catch {
+    return new Date(iso).toUTCString().slice(0, 22);
   }
 }

@@ -1,3 +1,4 @@
+import { isManagerRole } from '@delegate/shared';
 import { useSearchParams } from 'react-router';
 import { Spinner } from '../components/ui';
 import { PageHeader } from './AppShell';
@@ -8,26 +9,29 @@ import { BillingTab } from './settings/BillingTab';
 import { IntegrationsTab } from './settings/IntegrationsTab';
 import { WorkspaceTab } from './settings/WorkspaceTab';
 
+/** Staff only see what they can act on; managers see the whole control panel. */
 const TABS = [
-  { id: 'workspace', label: 'Workspace' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'billing', label: 'Billing' },
-  { id: 'automations', label: 'Automations' },
-  { id: 'account', label: 'Account' },
+  { id: 'workspace', label: 'Workspace', managers: false },
+  { id: 'integrations', label: 'Integrations', managers: true },
+  { id: 'billing', label: 'Billing', managers: true },
+  { id: 'automations', label: 'Automations', managers: true },
+  { id: 'account', label: 'Account', managers: false },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
 export default function SettingsPage() {
   const ws = useWorkspace();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((t) => t.id === params.get('tab'))?.id ?? 'workspace') as TabId;
   if (!ws.data) return <Spinner className="m-8" />;
+  const manager = isManagerRole(ws.data.me.role);
+  const tabs = TABS.filter((t) => manager || !t.managers);
+  const tab = (tabs.find((t) => t.id === params.get('tab'))?.id ?? (manager ? 'workspace' : 'account')) as TabId;
 
   return (
     <div>
       <PageHeader title="Settings" />
       <div className="scrollbar-none mb-6 flex gap-1 overflow-x-auto border-b border-line px-4 sm:px-8" role="tablist">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             role="tab"

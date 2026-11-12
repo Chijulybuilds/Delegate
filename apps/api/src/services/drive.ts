@@ -63,7 +63,7 @@ export class DriveService {
       file.lastModifyingUser?.emailAddress?.toLowerCase() === email || (file.owners ?? []).some((o) => o.emailAddress?.toLowerCase() === email);
     const verified = modified >= since && byAssignee;
     const editedBy = file.lastModifyingUser?.displayName ?? 'someone';
-    const note = `Google Drive · ${file.name} · last edited by ${editedBy} ${file.modifiedTime ? new Date(file.modifiedTime).toUTCString().slice(5, 22) : ''}${
+    const note = `Google Drive · ${file.name} · last edited by ${editedBy} ${file.modifiedTime ? `${new Date(file.modifiedTime).toUTCString().slice(5, 22)} UTC` : ''}${
       verified ? '' : modified < since ? ' (before the task started)' : ' (not by the assignee)'
     }`;
 

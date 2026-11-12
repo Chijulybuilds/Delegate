@@ -18,12 +18,21 @@ const laneTone: Record<string, string> = {
   approved: 'bg-s-approved',
 };
 
-type Focus = 'toStart' | 'inMotion' | 'waitingOnMe' | 'toAudit';
-const FOCUS: Record<Focus, { label: string; match: (me: string) => (t: Task) => boolean }> = {
+type Focus = 'toStart' | 'inMotion' | 'overdue' | 'blocked' | 'waitingOnMe' | 'toAudit';
+const isLate = (t: Task) => !!t.dueAt && new Date(t.dueAt).getTime() < Date.now() && (t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked');
+/** `team` = a manager's view across everyone; otherwise only the viewer's own work. */
+const FOCUS: Record<Focus, { label: string; match: (me: string, team: boolean) => (t: Task) => boolean }> = {
   toStart: { label: 'To start', match: (me) => (t) => t.assigneeId === me && t.status === 'open' },
   inMotion: { label: 'In motion', match: (me) => (t) => t.assigneeId === me && (t.status === 'in_progress' || t.status === 'blocked') },
+  overdue: { label: 'Overdue', match: (me, team) => (t) => isLate(t) && (team || t.assigneeId === me) },
+  blocked: { label: 'Blocked', match: () => (t) => t.status === 'blocked' },
   waitingOnMe: { label: 'Waiting on me', match: (me) => (t) => t.status === 'blocked' && t.waitingOnId === me },
   toAudit: { label: 'To audit', match: () => (t) => t.status === 'done' },
+};
+/** Four numbers that answer "what needs me today?" — different for managers and staff. */
+const GLANCE: Record<'manager' | 'member', Focus[]> = {
+  manager: ['overdue', 'blocked', 'waitingOnMe', 'toAudit'],
+  member: ['toStart', 'inMotion', 'overdue', 'waitingOnMe'],
 };
 
 const SOURCE_LABEL: Record<TaskSource, string> = { app: 'App', slack: 'Slack', teams: 'Teams', whatsapp: 'WhatsApp', playbook: 'Playbook', github: 'GitHub' };
@@ -61,19 +70,17 @@ export default function BoardPage() {
   const isManager = isManagerRole(ws.data?.me.role);
   const tasks = useMemo(() => {
     let list = board.data?.tasks ?? [];
-    if (focus) list = list.filter(FOCUS[focus].match(meId));
+    if (focus) list = list.filter(FOCUS[focus].match(meId, isManager));
     else {
       if (scope === 'mine') list = list.filter((t) => t.assigneeId === meId);
       if (dept !== 'all') list = list.filter((t) => t.departmentId === dept);
       if (person !== 'all') list = list.filter((t) => t.assigneeId === person);
     }
     return list;
-  }, [board.data, scope, dept, person, meId, focus]);
+  }, [board.data, scope, dept, person, meId, focus, isManager]);
   const glance = useMemo(() => {
     const all = board.data?.tasks ?? [];
-    return (Object.keys(FOCUS) as Focus[])
-      .filter((f) => f !== 'toAudit' || isManager)
-      .map((f) => ({ id: f, label: FOCUS[f].label, count: all.filter(FOCUS[f].match(meId)).length }));
+    return GLANCE[isManager ? 'manager' : 'member'].map((f) => ({ id: f, label: FOCUS[f].label, count: all.filter(FOCUS[f].match(meId, isManager)).length }));
   }, [board.data, meId, isManager]);
 
   const waitingOnMe = (board.data?.tasks ?? []).filter((t) => t.status === 'blocked' && t.waitingOnId === meId);
@@ -128,7 +135,7 @@ export default function BoardPage() {
             data-testid={`glance-${g.id}`}
           >
             <span className={cx('text-[13px]', focus === g.id ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
-            <span className="text-2xl font-medium tracking-display">{g.count}</span>
+            <span className={cx('text-2xl font-medium tracking-display', g.count > 0 && focus !== g.id && (g.id === 'overdue' || g.id === 'waitingOnMe') && 'text-[#B4232A]')}>{g.count}</span>
           </button>
         ))}
       </div>

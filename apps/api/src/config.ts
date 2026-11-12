@@ -210,7 +210,8 @@ export function loadConfig(overrides: Partial<Record<keyof Env, string>> = {}): 
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
-    publicAppUrl: e.PUBLIC_APP_URL || null,
+    // On Vercel, fall back to the production domain Vercel exposes, so links in Slack/WhatsApp/email work out of the box.
+    publicAppUrl: (e.PUBLIC_APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '') || null)?.replace(/\/$/, '') ?? null,
     ai: e.ANTHROPIC_API_KEY ? { apiKey: e.ANTHROPIC_API_KEY, model: e.AI_MODEL } : null,
     mail: e.RESEND_API_KEY ? { apiKey: e.RESEND_API_KEY, from: e.MAIL_FROM } : null,
     cronSecret: e.CRON_SECRET || null,

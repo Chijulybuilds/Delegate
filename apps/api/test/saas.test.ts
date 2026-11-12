@@ -375,6 +375,18 @@ describe('WhatsApp', () => {
     const sent = calls.map((c) => (c.url.includes('graph.facebook.com') ? JSON.parse(c.body) : null)).find((b) => b?.type === 'template');
     expect(sent).toMatchObject({ to: '2348039990000', template: { name: 'delegate_task_assigned', language: { code: 'en' } } });
     expect(sent.template.components[0].parameters[1].text).toBe('Count the warehouse stock');
+    // Due time is shown in the workspace's time zone, not UTC.
+    expect(sent.template.components[0].parameters[3].text).toMatch(/^(no due date|\w{3} \d{1,2} \w{3}, \d{2}:\d{2})$/);
+
+    // One-tap quick action: the template's "Start" button carries "start DLG-n" back to us.
+    const task = [...store.tasks.values()].find((t) => t.title === 'Count the warehouse stock')!;
+    expect(sent.template.components[1]).toEqual({ type: 'button', sub_type: 'quick_reply', index: '0', parameters: [{ type: 'payload', payload: `start DLG-${task.seq}` }] });
+    const tap = JSON.stringify({
+      object: 'whatsapp_business_account',
+      entry: [{ changes: [{ value: { messages: [{ id: 'wamid.tap', from: '2348039990000', type: 'button', button: { text: 'Start', payload: `start DLG-${task.seq}` } }] } }] }],
+    });
+    await request(app).post('/api/hooks/whatsapp').set('x-hub-signature-256', sign(tap)).set('content-type', 'application/json').send(tap).expect(200);
+    expect(store.tasks.get(task.id)!.status).toBe('in_progress');
   });
 });
 

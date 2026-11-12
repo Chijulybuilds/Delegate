@@ -140,7 +140,8 @@ export default function AppShell() {
 function PlanCard() {
   const ws = useWorkspace();
   const ent = ws.data?.entitlements;
-  if (!ent) return null;
+  // Staff never deal with billing — keep their sidebar quiet.
+  if (!ent || !isManagerRole(ws.data?.me.role)) return null;
   const label = ent.status === 'trialing' ? `Team trial · ${ent.trialDaysLeft}d left` : ent.effectivePlan === 'starter' ? 'Starter (free)' : `${ent.plan[0]!.toUpperCase()}${ent.plan.slice(1)} plan`;
   return (
     <Link to="/app/settings?tab=billing" className="mt-6 block rounded-2xl border border-dashed border-line-2 px-3 py-2.5 text-xs text-mute transition-colors hover:border-ink hover:text-ink" data-testid="plan-card">

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { HttpError } from '../lib/errors.js';
 import type { BillingService } from '../services/billing.js';
 import type { HookResult, IntegrationService } from '../services/integrations.js';
 
@@ -10,9 +11,10 @@ import type { HookResult, IntegrationService } from '../services/integrations.js
 function raw(req: Request): Buffer {
   if (Buffer.isBuffer(req.body)) return req.body;
   if (typeof req.body === 'string') return Buffer.from(req.body);
-  // Body already parsed by a platform helper: signatures can't be verified reliably.
-  console.error('[hooks] request body was pre-parsed; set NODEJS_HELPERS=0 on Vercel');
-  return Buffer.from(JSON.stringify(req.body ?? {}));
+  // The platform already consumed and parsed the body (Vercel's Node helpers), so the exact bytes
+  // the signature covers are gone. Fail loudly with a 5xx: providers retry, nothing is lost once fixed.
+  console.error('[hooks] raw body unavailable — set NODEJS_HELPERS=0 in the Vercel project environment variables');
+  throw new HttpError(500, 'Webhook raw body unavailable: set NODEJS_HELPERS=0 in your Vercel environment variables', 'raw_body_unavailable');
 }
 
 function send(res: Response, r: HookResult) {

@@ -183,7 +183,7 @@ export function verifyMetaSignature(appSecret: string, header: string | undefine
 const templateText = (s: string) => s.replace(/[\n\t]+/g, ' · ').replace(/ {4,}/g, '   ').slice(0, 900);
 
 export const WHATSAPP_TEMPLATES = {
-  assigned: 'delegate_task_assigned', // {{1}} ref, {{2}} title, {{3}} assigned by, {{4}} due
+  assigned: 'delegate_task_assigned', // {{1}} ref, {{2}} title, {{3}} assigned by, {{4}} due · quick reply button "Start"
   blocker: 'delegate_blocker', // {{1}} person blocked, {{2}} ref, {{3}} title, {{4}} reason
   escalation: 'delegate_escalation', // {{1}} ref, {{2}} title, {{3}} hours, {{4}} assignee
   digest: 'delegate_daily_digest', // {{1}} first name, {{2}} count, {{3}} list
@@ -205,13 +205,17 @@ export class WhatsAppApi {
   }
 
   /** Business-initiated message (outside the 24h window) — needs an approved template. */
-  sendTemplate(to: string, name: string, params: string[]) {
+  sendTemplate(to: string, name: string, params: string[], quickReplies: string[] = []) {
     return this.send(to, {
       type: 'template',
       template: {
         name,
         language: { code: this.cfg.templateLang },
-        components: [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text: templateText(text) })) }],
+        components: [
+          { type: 'body', parameters: params.map((text) => ({ type: 'text', text: templateText(text) })) },
+          // Payloads for the template's quick-reply buttons, in order; they come back as button.payload.
+          ...quickReplies.map((payload, index) => ({ type: 'button', sub_type: 'quick_reply', index: String(index), parameters: [{ type: 'payload', payload }] })),
+        ],
       },
     });
   }

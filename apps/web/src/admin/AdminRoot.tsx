@@ -276,6 +276,7 @@ function Orgs({ token }: { token: string }) {
           <tr className="border-b border-line text-left text-xs text-faint">
             <th className="px-5 py-3 font-normal">Workspace</th>
             <th className="py-3 font-normal">Plan</th>
+            <th className="py-3 font-normal">Billing</th>
             <th className="py-3 text-right font-normal">Members</th>
             <th className="py-3 text-right font-normal">Tasks</th>
             <th className="py-3 pl-6 font-normal">Last activity</th>
@@ -300,6 +301,13 @@ function Orgs({ token }: { token: string }) {
                     </option>
                   ))}
                 </select>
+              </td>
+              <td className="py-3.5 text-[13px]" data-testid={`org-billing-${o.slug}`}>
+                <span className="capitalize">{o.billingStatus === 'none' ? 'Free' : o.billingStatus.replace('_', ' ')}</span>
+                <span className="block text-xs text-faint">
+                  {o.billingProvider ? (o.billingProvider === 'manual' ? 'Manual' : o.billingProvider === 'stripe' ? 'Stripe' : 'Paystack') : '—'}
+                  {o.seats ? ` · ${o.seats} seat${o.seats === 1 ? '' : 's'}` : ''}
+                </span>
               </td>
               <td className="py-3.5 text-right tabular-nums">{o.members}</td>
               <td className="py-3.5 text-right tabular-nums">{o.tasks}</td>

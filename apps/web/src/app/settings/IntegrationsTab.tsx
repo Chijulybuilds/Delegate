@@ -54,7 +54,7 @@ export function IntegrationsTab({ ws }: { ws: WorkspaceData }) {
   return (
     <div className="max-w-5xl space-y-4" data-testid="integrations">
       {!canManage && <p className="rounded-2xl border border-line bg-paper px-4 py-3 text-sm text-mute">Only managers can connect tools. You can link your own WhatsApp under Account.</p>}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <SlackCard s={get('slack')} canManage={canManage} run={run} />
         <TeamsCard s={get('teams')} canManage={canManage} run={run} />
         <WhatsAppCard s={get('whatsapp')} canManage={canManage} run={run} teamPlan={ws.entitlements.features.whatsapp} simulator={!!config?.integrations.whatsapp.simulator} />

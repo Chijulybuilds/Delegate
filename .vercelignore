@@ -1,0 +1,7 @@
+test-results
+playwright-report
+blob-report
+coverage
+.env
+.env.local
+.env.*.local
