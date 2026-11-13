@@ -12,7 +12,7 @@
 
 | Area | Highlights |
 |---|---|
-| **Landing page** | Milk/light-grey studio look in Inter Tight. One persistent motion carries the whole page: a photographed hand presenting a Delegate-branded coffee cup rises in the hero, then travels with the scroll. In *How it works* the cup itself changes colour, keeping the photo's lighting, and its printed ticket steps through Open → In progress → Executed → Audited ✓. It comes back blue for the final call to action. Respects `prefers-reduced-motion`. |
+| **Landing page** | Milk/light-grey studio look in Inter Tight. One persistent motion carries the whole page: a photographed hand holding a phone rises in the hero and travels with the scroll. The phone shows the real Delegate app, live:<br>**Hero:** the sign-in screen types an email, taps *Continue* and lands on today's board.<br>**How it works:** one ticket steps through Open → In motion → Executed → Audited ✓.<br>**Further down:** the live activity feed, the board, and *All caught up* above the footer.<br>The fingertips sit in front of the screen, as they would in real life. Respects `prefers-reduced-motion`. |
 | **Workspace app** (`/app`) | Six simple pages:<br>**Today**: the board, plus four "what needs me" numbers that double as filters.<br>**Activity**: the live feed.<br>**Insights**: Velocity Pulse and Standup-in-a-Box.<br>**Playbooks**: recurring checklists.<br>**Team**.<br>**Settings**: tabs, with staff only seeing what they can act on.<br>Plus task numbers (`DLG-12`), proof of work (link, note, file, Google Drive), a chat thread per task, Blocker Ping, and a notification bell. |
 | **Billing** | **Stripe** (per-seat, cards worldwide, auto seat sync, customer portal) and **Paystack** (₦ cards, bank transfer, USSD). 14-day Team trial, Starter/Team/Enterprise entitlements, webhook-driven subscriptions. |
 | **Channels** | **Slack** (OAuth install, channel notifications, `/delegate`, message → task shortcut), **Microsoft Teams** (Adaptive Cards via Workflows, `@Delegate` commands via outgoing webhook) and **WhatsApp** (templates, phone linking, quick replies and a one-tap **Start**). One command language everywhere: `new … @tunde tomorrow !high`, `list`, `start/done/block DLG-12`. |
@@ -71,7 +71,7 @@ In demo mode, payments, Slack, WhatsApp and GitHub are **simulated**, so you can
 ```
 apps/
   web/        React 19 · Vite 7 · Tailwind CSS 4 · Motion · TanStack Query · React Router
-    src/landing/   LandingPage, CupStage (scroll engine), PhotoCup (photo + live cup colour), BoardPreview
+    src/landing/   LandingPage, PhoneStage (scroll engine), PhotoPhone (photo + live screen), PhoneScreen (the app on the phone), BoardPreview
     src/app/       AppShell, Board, TaskDrawer, Activity, Insights, Playbooks, Team, Settings (tabs)
     src/admin/     AdminRoot: separate login + console
   api/        Node · Express 5 · TypeScript · Zod · jose · supabase-js · stripe
@@ -93,16 +93,17 @@ scripts/
 
 ## The hero photo
 
-`scripts/hero-photo/process.py` turns `scripts/hero-photo/source.jpg` (a hand-holding-a-cup mockup photo) into the assets in `apps/web/src/landing/assets/`. It:
+`scripts/hero-photo/process.py` turns `scripts/hero-photo/source.jpg` (a hand holding a phone) into the assets in `apps/web/src/landing/assets/`. It:
 
-- cuts the hand and cup out of the studio background, with clean edges
-- re-tones the hand to a deep brown skin tone, keeping the photo's own light and shadow
-- removes the mockup's original printing and rebuilds the cup as a clean, lit cylinder
-- exports a cup mask and a lighting map
+- cuts the hand and phone out of the studio background, with clean edges
+- re-tones the hand to a deep brown skin tone, keeping the photo's own light and shadow (palms a little warmer, nails lighter, as on a real hand)
+- blanks the phone's glass, because the browser draws the live app there instead
+- puts the three fingertips that wrap over the screen's edge on their own layer, with a soft shadow on the glass
+- writes the screen's exact position to `hand-phone.json`
 
-In the browser, `PhotoCup` then fills the cup with the current state colour, prints the Delegate design on it, and lays the photo's lighting back on top. The fingers stay in front of the print.
+In the browser, `PhotoPhone` stacks the photo, then the live `PhoneScreen` scaled onto the glass, then a faint glass reflection, then the fingertips on top.
 
-To use a sharper or different photo of the same shot, replace `source.jpg` (higher resolution looks better) and run:
+To use a sharper export of the same photo, replace `source.jpg` and run:
 
 ```bash
 python3 scripts/hero-photo/process.py
@@ -127,7 +128,7 @@ It needs Python 3.9+ with `numpy` and `pillow`.
 
 ## Status
 
-- ✅ 42 API tests and 31 Playwright end-to-end tests pass against the production build
+- ✅ 45 API tests and 36 Playwright end-to-end tests pass against the production build
 - ✅ Both Supabase migrations checked on PostgreSQL 16: they re-run cleanly, users only see their own workspace, browsers can't write, and the activity log can't be edited or deleted
 - ✅ Vercel entry verified locally: health, cron auth, and webhook signatures with `NODEJS_HELPERS=0`; a loud failure without it
 - ⏳ Live providers need your keys: follow SETUP.md → INTEGRATIONS.md → DEPLOYMENT.md

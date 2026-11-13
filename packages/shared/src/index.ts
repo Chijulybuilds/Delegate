@@ -269,6 +269,8 @@ export interface AppConfig {
     googleDrive: { clientId: string; apiKey: string; appId: string } | null;
   };
   storage: 'api' | 'supabase';
+  /** Set when the server is running but its database isn't ready (e.g. a migration hasn't been run). */
+  setupIssue: string | null;
 }
 
 export interface MeResponse {

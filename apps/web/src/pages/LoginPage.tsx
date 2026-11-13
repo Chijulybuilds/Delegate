@@ -6,7 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useToast } from '../components/Toast';
 import { Avatar, Button, cx, EASE, Field, FullPageSpinner, Input, Logo } from '../components/ui';
-import { KRAFT, PhotoCup } from '../landing/PhotoCup';
+import { PhotoPhone } from '../landing/PhotoPhone';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -32,7 +32,7 @@ function GoogleIcon() {
 const roleLabel: Record<MemberRole, string> = { owner: 'Owner', manager: 'Manager', member: 'Staff' };
 
 export default function LoginPage() {
-  const { config, configError, booting, token, me, signInWithGoogle, signInDemo } = useAuth();
+  const { config, configError, configErrorMessage, meError, booting, token, me, signInWithGoogle, signInDemo, signOut, refreshMe } = useAuth();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -115,10 +115,31 @@ export default function LoginPage() {
             {signup ? 'Sign up with your work Google account. Create a workspace or join your team with an invite code.' : 'Sign in with your work Google account to open your board.'}
           </p>
 
+          {/* Anything that would make sign-in fail is explained here, before anyone clicks. */}
           {configError && (
-            <p className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-[#B4232A]">
-              Can’t reach the Delegate API. Start it with <code className="font-mono">npm run dev</code> and refresh.
+            <p className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-[#B4232A]" role="alert" data-testid="login-problem">
+              {configErrorMessage}
             </p>
+          )}
+          {config?.setupIssue && (
+            <p className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-[#B4232A]" role="alert" data-testid="login-problem">
+              {config.setupIssue}
+            </p>
+          )}
+          {meError && (
+            <div className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-[#B4232A]" role="alert" data-testid="login-problem">
+              <p>
+                <span className="font-medium">You’re signed in, but Delegate couldn’t load your account.</span> {meError}
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => refreshMe()}>
+                  Try again
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => signOut()}>
+                  Sign out
+                </Button>
+              </div>
+            </div>
           )}
 
           {config?.authMode === 'supabase' && (
@@ -201,22 +222,21 @@ export default function LoginPage() {
         </motion.div>
       </div>
 
-      <div className="relative hidden overflow-hidden border-l border-line bg-milk-2 lg:block">
+      <div className="relative hidden border-l border-line bg-milk-2 lg:block">
         <div className="dot-grid absolute inset-0 opacity-70" />
-        <motion.div
-          className="absolute bottom-[-14%] left-1/2 h-[100%] -translate-x-1/2"
-          initial={{ y: 120, opacity: 0, rotate: -6 }}
-          animate={{ y: 0, opacity: 1, rotate: 0 }}
-          transition={{ type: 'spring', stiffness: 40, damping: 14, delay: 0.1 }}
-        >
-          <motion.div className="h-full" animate={{ y: [0, -8, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}>
-            <PhotoCup
-              className="h-full"
-              color={KRAFT}
-              print={{ status: signup ? 'Open' : 'Welcome back', meta: signup ? 'Your workspace' : 'Board ready' }}
-            />
+        {/* Pinned to the window, so the whole phone stays in view however long the form is. */}
+        <div className="sticky top-0 h-dvh overflow-hidden">
+          <motion.div
+            className="absolute bottom-[-7%] left-1/2 h-[84%] -translate-x-1/2"
+            initial={{ y: 120, opacity: 0, rotate: -6 }}
+            animate={{ y: 0, opacity: 1, rotate: 0 }}
+            transition={{ type: 'spring', stiffness: 40, damping: 14, delay: 0.1 }}
+          >
+            <motion.div className="h-full" animate={{ y: [0, -8, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}>
+              <PhotoPhone className="h-full" scene={signup ? 'board' : 'login'} />
+            </motion.div>
           </motion.div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );

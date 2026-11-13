@@ -16,9 +16,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Button, cx, EASE, Logo, Pill } from '../components/ui';
 import { BoardPreview } from './BoardPreview';
-import { CupStage, useHowStep } from './CupStage';
+import { PhoneStage, useHowStep } from './PhoneStage';
 
-/* One reveal, used everywhere: the cup is the hero motion, content just settles in. */
+/* One reveal, used everywhere: the phone is the hero motion, content just settles in. */
 function Reveal({ children, delay = 0, className }: { children: ReactNode; delay?: number; className?: string }) {
   return (
     <motion.div
@@ -435,7 +435,7 @@ export default function LandingPage() {
       <div className="pointer-events-none fixed inset-0 -z-10 bg-milk" aria-hidden>
         <div className="dot-grid absolute inset-0 [mask-image:radial-gradient(ellipse_70%_65%_at_50%_45%,transparent_35%,black_100%)]" />
       </div>
-      <CupStage step={step} />
+      <PhoneStage step={step} />
       <Nav />
       <main className="relative z-10">
         <Hero />

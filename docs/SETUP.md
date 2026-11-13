@@ -187,13 +187,31 @@ Restart `npm run dev`. The sign-in page now shows **Continue with Google**, the 
 
 ---
 
-## 5. Tests
+## 5. If sign-in doesn't work
+
+Delegate tells you why on the sign-in page itself, in a red box. The usual causes:
+
+| What the red box says | Fix |
+|---|---|
+| *…the package "…" isn't installed* | You pulled new code. Run `npm install`, then `npm run dev` again. (`npm run dev` also checks this before starting.) |
+| *The Delegate API isn't responding* | The API part of `npm run dev` stopped. Look in that terminal for a red `[api]` line. After pulling new code, `npm install` is usually the fix. |
+| *…missing the latest migration* | In Supabase → SQL Editor, run `supabase/migrations/20261113000000_saas.sql`. Refresh the page; no restart needed. |
+| *…the database is empty* | Run both files in `supabase/migrations`, oldest first. |
+| *…is required in production* | Your `.env` says `NODE_ENV=production`. Locally, use `NODE_ENV=development`. On Vercel, add the named variable and redeploy. |
+| *The server didn't accept your Google session* | `SUPABASE_URL` / keys on the server belong to a different Supabase project than the one you signed in to. |
+| Google sends you back to the home page | Add `http://localhost:3000/auth/callback` (and your live domain's) under Supabase → Authentication → URL Configuration → Redirect URLs. Delegate finishes the sign-in anyway, but Supabase should allow the callback. |
+
+`GET /api/health` shows the same information: `{"ok":false,"setupIssue":"…"}` when something needs fixing.
+
+---
+
+## 6. Tests
 
 ```bash
 npm test
 ```
 
-runs the API suite (42 tests):
+runs the API suite (45 tests):
 - the state machine, permissions, tenant isolation and admin separation
 - billing: trial, Starter limits, Stripe and Paystack webhook signatures and replays
 - Slack, Teams, WhatsApp and GitHub webhooks, including forged-signature rejection
@@ -209,7 +227,8 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-That builds production, starts it on `:3100` with a fresh demo workspace and simulated providers, and runs 31 browser tests on desktop and mobile:
-- landing page, the full accountability loop, blockers, chat, filters, onboarding and the admin console
+That builds production, starts it on `:3100` with a fresh demo workspace and simulated providers, and runs 36 browser tests on desktop and mobile:
+- landing page (the phone signs in by itself and walks a ticket through all four states), the full accountability loop, blockers, chat, filters, onboarding and the admin console
+- every way sign-in can fail shows its reason and fix
 - trial → checkout → Team, the WhatsApp simulator, Slack connect + test message, GitHub webhook setup
 - playbooks, the notification bell, glance filters and automations

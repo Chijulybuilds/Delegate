@@ -114,8 +114,36 @@ export function createApp(deps: AppDeps): Express & { services: Services } {
   app.use(express.json({ limit: '256kb' }));
   app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false }));
 
+  // Database readiness: probed at start-up and re-checked every 15 s while something is wrong, so
+  // running a missing migration fixes sign-in without restarting. Until then every API call explains
+  // what to do instead of failing as an anonymous 500 (which looks like "login doesn't work").
+  let setup: { issue: string | null; at: number } | null = null;
+  let probing: Promise<string | null> | null = null;
+  const setupIssue = async (): Promise<string | null> => {
+    if (!store.checkSchema) return null;
+    if (setup && (!setup.issue || Date.now() - setup.at < 15_000)) return setup.issue;
+    probing ??= store
+      .checkSchema()
+      .then((issue) => {
+        if (issue && issue !== setup?.issue) console.error(`\n  ✋ ${issue}\n`);
+        setup = { issue, at: Date.now() };
+        return issue;
+      })
+      .finally(() => {
+        probing = null;
+      });
+    return probing;
+  };
+  void setupIssue();
+  app.use('/api', async (req, res, next) => {
+    if (req.path === '/health' || req.path === '/config') return next();
+    const issue = await setupIssue();
+    if (issue) return void res.status(503).json({ error: { code: 'setup_incomplete', message: issue } });
+    next();
+  });
+
   const verifier = new UserTokenVerifier(config);
-  app.use('/api', publicRoutes({ config, store, verifier, ai: s.ai, workspace: s.workspace }));
+  app.use('/api', publicRoutes({ config, store, verifier, ai: s.ai, workspace: s.workspace, setupIssue }));
   app.use('/api/admin', adminRoutes({ config, admin: s.admin }));
   app.use('/api/cron', cronRoutes({ config, automation: s.automation }));
   app.use('/api', oauthRoutes(s.integrations));

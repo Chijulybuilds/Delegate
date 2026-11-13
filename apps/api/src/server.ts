@@ -48,6 +48,12 @@ export async function startServer(opts: { defaultPort: number; webDist: string |
       console.log('');
       resolve(server);
     });
+    server.on('error', (e: NodeJS.ErrnoException) => {
+      if (e.code !== 'EADDRINUSE') throw e;
+      console.error(`\n  ✋ Port ${port} is already in use — Delegate is probably already running in another terminal.`);
+      console.error(`     Stop that one (Ctrl+C), or run this one on another port: PORT=${port + 1} npm start\n`);
+      process.exit(1);
+    });
     const shutdown = () => {
       if (timer) clearInterval(timer);
       server.close(() => process.exit(0));

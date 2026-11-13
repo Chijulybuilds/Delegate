@@ -83,6 +83,40 @@ export class SupabaseStore implements Store {
     this.db = createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   }
 
+  // Schema -----------------------------------------------------------------
+  /** One cheap probe per migration, so a half-migrated database is named instead of failing as a 500. */
+  async checkSchema(): Promise<string | null> {
+    const missing = async (table: string, columns: string) => {
+      const { error } = await this.db.from(table).select(columns).limit(1);
+      if (!error) return false;
+      // 42P01 / PGRST205: table doesn't exist · 42703 / PGRST204: column doesn't exist
+      if (['42P01', 'PGRST205', '42703', 'PGRST204'].includes(error.code ?? '')) return true;
+      if (/does not exist|could not find/i.test(error.message)) return true;
+      throw new Error(`Supabase check failed: ${error.message}`);
+    };
+    try {
+      if (await missing('profiles', 'id')) {
+        return 'The Supabase database is empty: run both files in supabase/migrations (Supabase → SQL Editor), oldest first.';
+      }
+      const saas = await Promise.all([
+        missing('profiles', 'id, phone'),
+        missing('organizations', 'id, settings, task_seq'),
+        missing('tasks', 'id, seq, source, escalation_level'),
+        missing('subscriptions', 'org_id'),
+        missing('playbooks', 'id'),
+        missing('notifications', 'id'),
+      ]);
+      if (saas.some(Boolean)) {
+        return 'The Supabase database is missing the latest migration: open Supabase → SQL Editor and run supabase/migrations/20261113000000_saas.sql.';
+      }
+      return null;
+    } catch (error) {
+      return error instanceof Error && /fetch failed|ENOTFOUND|ECONNREFUSED|Invalid API key|JWT/i.test(error.message)
+        ? `Can't reach Supabase with the configured SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (${error.message}).`
+        : null;
+    }
+  }
+
   // Profiles ---------------------------------------------------------------
   async getProfile(id: string) {
     const data = check(await this.db.from('profiles').select('*').eq('id', id).maybeSingle(), 'loading profile');

@@ -274,3 +274,32 @@ describe('cron', () => {
     expect(res.body.workspaces).toBe(1);
   });
 });
+
+describe('sign-in never fails silently', () => {
+  it('names a missing migration on /config and on every API call until it is fixed', async () => {
+    const issue = 'The Supabase database is missing the latest migration: run supabase/migrations/20261113000000_saas.sql.';
+    const halfMigrated = Object.assign(store, { checkSchema: async () => issue });
+    const guarded = createApp({ config, store: halfMigrated });
+
+    const cfg = await request(guarded).get('/api/config').expect(200);
+    expect(cfg.body.setupIssue).toBe(issue);
+    const health = await request(guarded).get('/api/health').expect(503);
+    expect(health.body).toMatchObject({ ok: false, setupIssue: issue });
+    // Sign-in (and everything after it) explains itself instead of failing as an anonymous 500.
+    const res = await request(guarded).post('/api/auth/demo').send({ personaId: 'demo-ada' }).expect(503);
+    expect(res.body.error).toEqual({ code: 'setup_incomplete', message: issue });
+  });
+
+  it('reports no setup issue for a healthy database', async () => {
+    const healthy = Object.assign(store, { checkSchema: async () => null });
+    const res = await request(createApp({ config, store: healthy })).get('/api/config').expect(200);
+    expect(res.body.setupIssue).toBeNull();
+  });
+
+  it('explains why the API could not start', async () => {
+    const { describeStartupError } = await import('../src/lib/startup.js');
+    const missing = Object.assign(new Error("Cannot find package 'stripe' imported from /app/dist/chunk.js"), { code: 'ERR_MODULE_NOT_FOUND' });
+    expect(describeStartupError(missing, 'dev')).toMatch(/package "stripe" isn't installed.*npm install/);
+    expect(describeStartupError(new Error('APP_ENCRYPTION_KEY is required in production'), 'vercel')).toMatch(/Vercel → Project → Settings → Environment Variables/);
+  });
+});

@@ -51,6 +51,8 @@ export interface IntegrationRecord {
  */
 export interface Store {
   readonly kind: 'memory' | 'supabase';
+  /** Plain-language description of a database that is missing a migration, or null when it is up to date. */
+  checkSchema?(): Promise<string | null>;
 
   // Profiles
   getProfile(id: string): Promise<Profile | null>;

@@ -14,9 +14,9 @@ export class ApiError extends Error {
 
 type TokenGetter = () => Promise<string | null> | string | null;
 let userTokenGetter: TokenGetter = () => null;
-let onUnauthorized: () => void = () => {};
+let onUnauthorized: (error: ApiError) => void = () => {};
 
-export function configureApi(opts: { getToken: TokenGetter; onUnauthorized: () => void }) {
+export function configureApi(opts: { getToken: TokenGetter; onUnauthorized: (error: ApiError) => void }) {
   userTokenGetter = opts.getToken;
   onUnauthorized = opts.onUnauthorized;
 }
@@ -52,8 +52,9 @@ export async function request<T>(path: string, opts: RequestOpts = {}): Promise<
     } catch {
       /* non-JSON error */
     }
-    if (res.status === 401 && opts.token === undefined) onUnauthorized();
-    throw new ApiError(res.status, code, message);
+    const error = new ApiError(res.status, code, message);
+    if (res.status === 401 && opts.token === undefined) onUnauthorized(error);
+    throw error;
   }
   const type = res.headers.get('content-type') ?? '';
   return (type.includes('application/json') ? res.json() : res.blob()) as Promise<T>;

@@ -28,11 +28,22 @@ function RequireWorkspace({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * If Supabase's redirect allow-list doesn't include /auth/callback, Google sign-in comes back to the
+ * Site URL ("/") with the code attached. Finish signing in there instead of showing the landing page.
+ */
+function Home() {
+  const { search, hash } = useLocation();
+  const returning = /[?&](code|error_description)=/.test(search) || /access_token=|error_description=/.test(hash);
+  if (returning) return <Navigate to={`/auth/callback${search}${hash}`} replace />;
+  return <LandingPage />;
+}
+
 export function App() {
   return (
     <Suspense fallback={<FullPageSpinner />}>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<Home />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/onboarding" element={<Onboarding />} />

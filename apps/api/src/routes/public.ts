@@ -19,17 +19,20 @@ export function publicRoutes(deps: {
   verifier: UserTokenVerifier;
   ai: ProofVerifier;
   workspace: WorkspaceService;
+  setupIssue: () => Promise<string | null>;
 }) {
   const { config, store, verifier, workspace } = deps;
   const r = Router();
   const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false });
 
-  r.get('/health', (_req, res) => {
-    res.json({ ok: true, store: store.kind, authMode: config.authMode, version: config.version });
+  r.get('/health', async (_req, res) => {
+    const issue = await deps.setupIssue();
+    res.status(issue ? 503 : 200).json({ ok: !issue, store: store.kind, authMode: config.authMode, version: config.version, ...(issue ? { setupIssue: issue } : {}) });
   });
 
-  r.get('/config', (_req, res) => {
+  r.get('/config', async (_req, res) => {
     const body: PublicConfig = {
+      setupIssue: await deps.setupIssue(),
       authMode: config.authMode,
       supabaseUrl: config.supabase?.url ?? null,
       supabaseAnonKey: config.supabase?.anonKey ?? null,
