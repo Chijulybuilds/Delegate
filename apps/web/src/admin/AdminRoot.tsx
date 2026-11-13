@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ColumnChart, StackedBar, StatTile } from '../components/charts';
 import { useToast } from '../components/Toast';
-import { Avatar, Button, Card, cx, EASE, Input, LogoMark, Segmented, Spinner } from '../components/ui';
+import { Avatar, Button, Card, cx, EASE, Input, LogoMark, Segmented, Select, Spinner, type SelectOption } from '../components/ui';
 import { api, ApiError } from '../lib/api';
 import { clock, timeAgo } from '../lib/format';
 
@@ -16,6 +16,11 @@ import { clock, timeAgo } from '../lib/format';
  */
 
 const TOKEN_KEY = 'delegate.adminToken';
+const PLAN_OPTIONS: SelectOption[] = [
+  { value: 'starter', label: 'Starter', description: 'Free · 5 members', dot: 'var(--color-line-2)' },
+  { value: 'team', label: 'Team', description: 'Paid per member', dot: 'var(--color-s-approved)' },
+  { value: 'enterprise', label: 'Enterprise', description: 'Invoiced', dot: 'var(--color-ink)' },
+];
 const readToken = () => {
   try {
     return sessionStorage.getItem(TOKEN_KEY);
@@ -294,13 +299,7 @@ function Orgs({ token }: { token: string }) {
                 </p>
               </td>
               <td className="py-3.5">
-                <select className="h-8 rounded-full border border-line bg-paper px-2.5 text-[13px] capitalize" value={o.plan} onChange={(e) => patch.mutate({ id: o.id, plan: e.target.value })} aria-label={`Plan for ${o.name}`}>
-                  {['starter', 'team', 'enterprise'].map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
+                <Select size="sm" value={o.plan} onChange={(plan) => patch.mutate({ id: o.id, plan })} options={PLAN_OPTIONS} aria-label={`Plan for ${o.name}`} />
               </td>
               <td className="py-3.5 text-[13px]" data-testid={`org-billing-${o.slug}`}>
                 <span className="capitalize">{o.billingStatus === 'none' ? 'Free' : o.billingStatus.replace('_', ' ')}</span>
@@ -313,7 +312,7 @@ function Orgs({ token }: { token: string }) {
               <td className="py-3.5 text-right tabular-nums">{o.tasks}</td>
               <td className="py-3.5 pl-6 text-mute">{o.lastActivityAt ? timeAgo(o.lastActivityAt) : '—'}</td>
               <td className="py-3.5">
-                <span className={cx('rounded-full px-2.5 py-1 text-xs', o.status === 'active' ? 'bg-s-done-soft text-[#1E6B47]' : 'bg-s-open-soft text-[#B4232A]')}>{o.status}</span>
+                <span className={cx('rounded-full px-2.5 py-1 text-xs', o.status === 'active' ? 'bg-s-done-soft text-s-done-ink' : 'bg-s-open-soft text-s-open-ink')}>{o.status}</span>
               </td>
               <td className="px-5 py-3.5 text-right">
                 <Button
@@ -385,7 +384,7 @@ function Users({ token }: { token: string }) {
                 <td className="py-3 capitalize text-ink-2">{u.role ?? '—'}</td>
                 <td className="py-3 text-mute">{timeAgo(u.createdAt)}</td>
                 <td className="py-3">
-                  <span className={cx('rounded-full px-2.5 py-1 text-xs', u.status === 'active' ? 'bg-s-done-soft text-[#1E6B47]' : 'bg-s-open-soft text-[#B4232A]')}>{u.status}</span>
+                  <span className={cx('rounded-full px-2.5 py-1 text-xs', u.status === 'active' ? 'bg-s-done-soft text-s-done-ink' : 'bg-s-open-soft text-s-open-ink')}>{u.status}</span>
                 </td>
                 <td className="px-5 py-3 text-right">
                   <Button size="sm" variant="ghost" onClick={() => patch.mutate({ id: u.id, status: u.status === 'active' ? 'suspended' : 'active' })}>

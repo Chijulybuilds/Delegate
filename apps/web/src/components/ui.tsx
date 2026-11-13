@@ -7,17 +7,14 @@ import {
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
-  type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { initials } from '../lib/format';
 
-export const EASE = [0.22, 1, 0.36, 1] as const;
+import { cx, EASE } from './util';
 
-export function cx(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(' ');
-}
+export { cx, EASE };
 
 /* ----------------------------------- Logo ----------------------------------- */
 
@@ -45,9 +42,9 @@ type Variant = 'primary' | 'outline' | 'ghost' | 'danger' | 'soft';
 type Size = 'sm' | 'md' | 'lg';
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-ink text-milk hover:bg-black border border-ink',
+  primary: 'bg-ink text-milk hover:bg-ink/90 border border-ink',
   outline: 'border border-ink/80 text-ink hover:bg-ink hover:text-milk',
-  ghost: 'text-ink-2 hover:bg-black/5 border border-transparent',
+  ghost: 'text-ink-2 hover:bg-ink/5 border border-transparent',
   danger: 'bg-s-open text-white hover:brightness-95 border border-s-open',
   soft: 'bg-paper text-ink border border-line hover:border-line-2 shadow-[var(--shadow-card)]',
 };
@@ -98,10 +95,10 @@ export function Pill({ children, className }: { children: ReactNode; className?:
 /* ---------------------------------- Status ---------------------------------- */
 
 const toneClasses = {
-  red: { dot: 'bg-s-open', soft: 'bg-s-open-soft text-[#B4232A]' },
-  amber: { dot: 'bg-s-active', soft: 'bg-s-active-soft text-[#8A5A00]' },
-  green: { dot: 'bg-s-done', soft: 'bg-s-done-soft text-[#1E6B47]' },
-  blue: { dot: 'bg-s-approved', soft: 'bg-s-approved-soft text-[#1A56C2]' },
+  red: { dot: 'bg-s-open', soft: 'bg-s-open-soft text-s-open-ink' },
+  amber: { dot: 'bg-s-active', soft: 'bg-s-active-soft text-s-active-ink' },
+  green: { dot: 'bg-s-done', soft: 'bg-s-done-soft text-s-done-ink' },
+  blue: { dot: 'bg-s-approved', soft: 'bg-s-approved-soft text-s-approved-ink' },
 } as const;
 
 export function StatusDot({ status, pulse, className }: { status: TaskStatus; pulse?: boolean; className?: string }) {
@@ -132,7 +129,7 @@ const priorityStyle: Record<TaskPriority, string> = {
   low: 'text-faint',
   medium: 'text-mute',
   high: 'text-ink-2',
-  urgent: 'text-[#B4232A]',
+  urgent: 'text-s-open-ink',
 };
 
 export function PriorityTag({ priority }: { priority: TaskPriority }) {
@@ -146,7 +143,8 @@ export function PriorityTag({ priority }: { priority: TaskPriority }) {
 
 /* ---------------------------------- Avatar ---------------------------------- */
 
-const avatarHues = ['#E9E2D8', '#DDE7E3', '#E4E1EE', '#EEDFDB', '#DFE6EF', '#ECE7D6'];
+// Theme-aware pastel backgrounds (see --color-avatar-* in styles.css).
+const avatarHues = [1, 2, 3, 4, 5, 6].map((n) => `var(--color-avatar-${n})`);
 
 export function Avatar({ name, src, size = 28, className }: { name: string; src?: string | null; size?: number; className?: string }) {
   const hue = avatarHues[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % avatarHues.length];
@@ -164,7 +162,7 @@ export function Avatar({ name, src, size = 28, className }: { name: string; src?
 /* ---------------------------------- Inputs ---------------------------------- */
 
 const field =
-  'w-full rounded-xl border border-line bg-paper px-3.5 text-sm text-ink placeholder:text-faint transition focus:border-ink focus:outline-none focus:ring-4 focus:ring-black/5';
+  'w-full rounded-xl border border-line bg-paper px-3.5 text-sm text-ink placeholder:text-faint transition focus:border-ink focus:outline-none focus:ring-4 focus:ring-ink/5';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
   return <input ref={ref} className={cx(field, 'h-11', className)} {...rest} />;
@@ -177,16 +175,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   return <textarea ref={ref} className={cx(field, 'min-h-24 resize-y py-3 leading-relaxed', className)} {...rest} />;
 });
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
-  { className, children, ...rest },
-  ref,
-) {
-  return (
-    <select ref={ref} className={cx(field, 'h-11 appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-9', className)} style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236f6f6b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }} {...rest}>
-      {children}
-    </select>
-  );
-});
+export { Select, type SelectOption } from './Select';
 
 export function Field({ label, hint, children, htmlFor }: { label: string; hint?: string; children: ReactNode; htmlFor?: string }) {
   return (

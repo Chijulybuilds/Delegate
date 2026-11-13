@@ -21,3 +21,11 @@ export async function signOut(page: Page) {
 
 export const lane = (page: Page, id: 'open' | 'active' | 'done' | 'approved') => page.getByTestId(`lane-${id}`);
 export const card = (page: Page, title: string) => page.locator(`[data-testid="task-card"][data-task-title="${title}"]`);
+
+/** Picks an option in one of Delegate's dropdowns (they replace native <select>s). */
+export async function choose(page: Page, testId: string, value: string) {
+  const trigger = page.getByTestId(testId);
+  await trigger.click();
+  await page.locator(`[role="listbox"] [role="option"][data-value="${value}"]`).click();
+  await expect(trigger).toHaveAttribute('data-value', value);
+}

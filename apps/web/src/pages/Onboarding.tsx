@@ -67,7 +67,7 @@ export default function Onboarding() {
       </div>
       <motion.div className="mx-auto max-w-3xl py-14" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: EASE }}>
         <h1 className="text-[clamp(2.2rem,5vw,3.4rem)] font-medium leading-[1] tracking-display">
-          <span className="text-[#6d6d66]">Hi {me.profile.fullName.split(' ')[0]},</span> let’s get you a board.
+          <span className="text-ink-soft">Hi {me.profile.fullName.split(' ')[0]},</span> let’s get you a board.
         </h1>
         <p className="mt-3 text-[15px] text-mute">Create a workspace for your company, or join your team with the invite code your manager shared.</p>
 

@@ -103,11 +103,11 @@ export default function LoginPage() {
           <h1 className="text-[2.6rem] font-medium leading-[1] tracking-display">
             {signup ? (
               <>
-                <span className="text-[#6d6d66]">Start handing</span> work off.
+                <span className="text-ink-soft">Start handing</span> work off.
               </>
             ) : (
               <>
-                <span className="text-[#6d6d66]">Welcome</span> back.
+                <span className="text-ink-soft">Welcome</span> back.
               </>
             )}
           </h1>
@@ -117,17 +117,17 @@ export default function LoginPage() {
 
           {/* Anything that would make sign-in fail is explained here, before anyone clicks. */}
           {configError && (
-            <p className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-[#B4232A]" role="alert" data-testid="login-problem">
+            <p className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-s-open-ink" role="alert" data-testid="login-problem">
               {configErrorMessage}
             </p>
           )}
           {config?.setupIssue && (
-            <p className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-[#B4232A]" role="alert" data-testid="login-problem">
+            <p className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-s-open-ink" role="alert" data-testid="login-problem">
               {config.setupIssue}
             </p>
           )}
           {meError && (
-            <div className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-[#B4232A]" role="alert" data-testid="login-problem">
+            <div className="mt-8 rounded-2xl border border-s-open/30 bg-s-open-soft px-4 py-3 text-sm text-s-open-ink" role="alert" data-testid="login-problem">
               <p>
                 <span className="font-medium">You’re signed in, but Delegate couldn’t load your account.</span> {meError}
               </p>

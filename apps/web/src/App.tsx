@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { FullPageSpinner } from './components/ui';
 import LandingPage from './landing/LandingPage';
 import { useAuth } from './lib/auth';
+import { useThemeScope } from './lib/theme';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
@@ -40,6 +41,8 @@ function Home() {
 }
 
 export function App() {
+  // Light/dark applies to the dashboard only; everything else stays light.
+  useThemeScope(useLocation().pathname);
   return (
     <Suspense fallback={<FullPageSpinner />}>
       <Routes>

@@ -1,9 +1,10 @@
-import { isManagerRole, TASK_PRIORITIES, type TaskPriority } from '@delegate/shared';
+import { isManagerRole, type TaskPriority } from '@delegate/shared';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
 import { Button, Field, Input, Modal, Select, Textarea } from '../components/ui';
 import { toLocalInput } from '../lib/format';
 import { useCreateTask, type WorkspaceData } from './data';
+import { departmentOptions, memberOptions, priorityOptions } from './options';
 
 function defaultDue(): string {
   const d = new Date();
@@ -64,33 +65,13 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Assignee">
-            <Select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} disabled={!isManager} data-testid="task-assignee">
-              {ws.members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.fullName}
-                  {m.userId === ws.me.userId ? ' (you)' : ''}
-                </option>
-              ))}
-            </Select>
+            <Select value={assigneeId} onChange={setAssigneeId} disabled={!isManager} options={memberOptions(ws.members, { meId: ws.me.userId, departments: ws.departments })} aria-label="Assignee" data-testid="task-assignee" />
           </Field>
           <Field label="Department">
-            <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-              <option value="">Assignee’s department</option>
-              {ws.departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </Select>
+            <Select value={departmentId} onChange={setDepartmentId} options={departmentOptions(ws.departments, { value: '', label: 'Assignee’s department' })} aria-label="Department" />
           </Field>
           <Field label="Priority">
-            <Select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)} className="capitalize">
-              {TASK_PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p[0]!.toUpperCase() + p.slice(1)}
-                </option>
-              ))}
-            </Select>
+            <Select value={priority} onChange={setPriority} options={priorityOptions} aria-label="Priority" />
           </Field>
           <Field label="Due">
             <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />

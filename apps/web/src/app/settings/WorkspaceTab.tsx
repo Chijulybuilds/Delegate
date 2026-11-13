@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useToast } from '../../components/Toast';
-import { Button, Card, Field, Input } from '../../components/ui';
+import { Button, Card, Field, Input, Select, type SelectOption } from '../../components/ui';
 import { api } from '../../lib/api';
 import type { WorkspaceData } from '../data';
 
@@ -12,7 +12,15 @@ export function WorkspaceTab({ ws }: { ws: WorkspaceData }) {
   const [timezone, setTimezone] = useState(ws.org.timezone);
   const [busy, setBusy] = useState(false);
   const isOwner = ws.me.role === 'owner';
-  const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [ws.org.timezone];
+  const zoneOptions = useMemo<SelectOption[]>(() => {
+    const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [ws.org.timezone];
+    const now = new Date();
+    return (zones.includes(ws.org.timezone) ? zones : [ws.org.timezone, ...zones]).map((z) => ({
+      value: z,
+      label: z.replace(/_/g, ' '),
+      description: `${now.toLocaleTimeString('en-GB', { timeZone: z, hour: '2-digit', minute: '2-digit' })} now`,
+    }));
+  }, [ws.org.timezone]);
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
@@ -36,13 +44,7 @@ export function WorkspaceTab({ ws }: { ws: WorkspaceData }) {
           <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isOwner} minLength={2} maxLength={60} />
         </Field>
         <Field label="Time zone" hint="Due times, playbooks and the morning brief follow this zone.">
-          <select className="h-11 w-full rounded-xl border border-line bg-paper px-3.5 text-sm" value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={ws.me.role === 'member'}>
-            {zones.map((z) => (
-              <option key={z} value={z}>
-                {z}
-              </option>
-            ))}
-          </select>
+          <Select value={timezone} onChange={setTimezone} options={zoneOptions} disabled={ws.me.role === 'member'} aria-label="Time zone" />
         </Field>
         <Field label="Invite code" hint="Share it with teammates — manage it on the Team page.">
           <Input value={ws.org.inviteCode} readOnly className="font-mono tracking-wider" />

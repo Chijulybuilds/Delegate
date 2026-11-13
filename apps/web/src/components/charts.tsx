@@ -75,7 +75,7 @@ export function ColumnChart({
                   tabIndex={0}
                   aria-label={`${d.tooltipLabel ?? d.label}: ${d.value} ${unit}`}
                 >
-                  {hover === i && <div className="absolute inset-y-0 left-0 right-0 rounded-md bg-black/[0.03]" />}
+                  {hover === i && <div className="absolute inset-y-0 left-0 right-0 rounded-md bg-ink/[0.04]" />}
                   <motion.div
                     className="relative w-full max-w-6 rounded-t-[4px]"
                     style={{ background: color, opacity: hover === null || hover === i ? 1 : 0.45 }}

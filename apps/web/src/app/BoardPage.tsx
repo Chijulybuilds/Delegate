@@ -1,5 +1,5 @@
 import { availableActions, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
-import { BellRing, Plus, ShieldCheck, Sparkles } from 'lucide-react';
+import { BellRing, Plus, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -9,6 +9,7 @@ import { dueLabel, timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
 import { memberName, useBoard, useTransition, useWorkspace, type WorkspaceData } from './data';
 import { NewTaskModal } from './NewTaskModal';
+import { departmentOptions, memberOptions } from './options';
 import { TaskDrawer } from './TaskDrawer';
 
 const laneTone: Record<string, string> = {
@@ -135,7 +136,7 @@ export default function BoardPage() {
             data-testid={`glance-${g.id}`}
           >
             <span className={cx('text-[13px]', focus === g.id ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
-            <span className={cx('text-2xl font-medium tracking-display', g.count > 0 && focus !== g.id && (g.id === 'overdue' || g.id === 'waitingOnMe') && 'text-[#B4232A]')}>{g.count}</span>
+            <span className={cx('text-2xl font-medium tracking-display', g.count > 0 && focus !== g.id && (g.id === 'overdue' || g.id === 'waitingOnMe') && 'text-s-open-ink')}>{g.count}</span>
           </button>
         ))}
       </div>
@@ -150,22 +151,15 @@ export default function BoardPage() {
             { value: 'mine', label: 'Mine' },
           ]}
         />
-        <Select value={dept} onChange={(e) => setDept(e.target.value)} className="h-9 w-auto! rounded-full pr-9 text-[13px]" aria-label="Filter by department">
-          <option value="all">All departments</option>
-          {ws.data.departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </Select>
-        <Select value={person} onChange={(e) => setPerson(e.target.value)} className="h-9 w-auto! rounded-full pr-9 text-[13px]" aria-label="Filter by person">
-          <option value="all">Every person</option>
-          {ws.data.members.map((m) => (
-            <option key={m.userId} value={m.userId}>
-              {m.fullName}
-            </option>
-          ))}
-        </Select>
+        <Select size="sm" value={dept} onChange={setDept} options={departmentOptions(ws.data.departments, { value: 'all', label: 'All departments' })} aria-label="Filter by department" data-testid="filter-department" />
+        <Select
+          size="sm"
+          value={person}
+          onChange={setPerson}
+          options={[{ value: 'all', label: 'Every person', icon: <Users className="size-4 text-mute" /> }, ...memberOptions(ws.data.members, { meId: meId, departments: ws.data.departments })]}
+          aria-label="Filter by person"
+          data-testid="filter-person"
+        />
       </div>
 
       {/* Blocker Ping: the bottleneck sees who is waiting on them */}
@@ -181,7 +175,7 @@ export default function BoardPage() {
             <span className="grid size-8 place-items-center rounded-full bg-s-active text-white">
               <BellRing className="size-4" />
             </span>
-            <p className="text-sm text-[#6b4700]">
+            <p className="text-sm text-s-active-ink">
               <span className="font-semibold">
                 {waitingOnMe.length === 1 ? '1 teammate is' : `${waitingOnMe.length} teammates are`} waiting on you.
               </span>{' '}
@@ -326,14 +320,14 @@ function TaskCard({
       <h3 className="mt-2 text-[14.5px] font-medium leading-snug tracking-[-0.01em]">{task.title}</h3>
 
       {task.status === 'blocked' && task.blockedReason && (
-        <div className="mt-2 rounded-xl bg-s-active-soft px-2.5 py-1.5 text-xs text-[#6b4700]">
+        <div className="mt-2 rounded-xl bg-s-active-soft px-2.5 py-1.5 text-xs text-s-active-ink">
           <p className="line-clamp-2">
             Blocked{task.waitingOnId ? ` · waiting on ${memberName(ws.members, task.waitingOnId).split(' ')[0]}` : ''}: {task.blockedReason}
           </p>
         </div>
       )}
       {(task.status === 'done' || task.status === 'approved') && verifiedBy && (
-        <span className="mt-2 mr-1 inline-flex items-center gap-1 rounded-full bg-s-approved-soft px-2 py-0.5 text-[11px] font-medium text-[#1A56C2]" data-testid="verified-badge">
+        <span className="mt-2 mr-1 inline-flex items-center gap-1 rounded-full bg-s-approved-soft px-2 py-0.5 text-[11px] font-medium text-s-approved-ink" data-testid="verified-badge">
           <ShieldCheck className="size-3" /> Verified · {verifiedBy === 'gdrive' ? 'Google Drive' : verifiedBy === 'github' ? 'GitHub' : 'WhatsApp'}
         </span>
       )}
@@ -341,7 +335,7 @@ function TaskCard({
         <span
           className={cx(
             'mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
-            aiVerdict === 'pass' ? 'bg-s-done-soft text-[#1E6B47]' : aiVerdict === 'review' ? 'bg-s-active-soft text-[#8A5A00]' : 'bg-s-open-soft text-[#B4232A]',
+            aiVerdict === 'pass' ? 'bg-s-done-soft text-s-done-ink' : aiVerdict === 'review' ? 'bg-s-active-soft text-s-active-ink' : 'bg-s-open-soft text-s-open-ink',
           )}
         >
           <Sparkles className="size-3" /> AI check: {aiVerdict === 'pass' ? 'looks complete' : aiVerdict === 'review' ? 'needs a look' : 'doesn’t match'}
@@ -351,7 +345,7 @@ function TaskCard({
       <div className="mt-3 flex items-center gap-2">
         <Avatar name={assignee?.fullName ?? '?'} src={assignee?.avatarUrl} size={22} />
         <span className="truncate text-xs text-ink-2">{assignee?.fullName.split(' ')[0] ?? 'Unassigned'}</span>
-        <span className={cx('ml-auto shrink-0 text-[11px]', due.overdue && task.status !== 'done' && task.status !== 'approved' ? 'font-medium text-[#B4232A]' : 'text-faint')}>{footer}</span>
+        <span className={cx('ml-auto shrink-0 text-[11px]', due.overdue && task.status !== 'done' && task.status !== 'approved' ? 'font-medium text-s-open-ink' : 'text-faint')}>{footer}</span>
       </div>
 
       {primary && QUICK[primary] && (

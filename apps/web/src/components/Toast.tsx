@@ -35,7 +35,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               className="pointer-events-auto flex max-w-md items-center gap-2.5 rounded-full bg-ink py-2.5 pl-3.5 pr-5 text-sm text-milk shadow-[var(--shadow-float)]"
               role={t.kind === 'error' ? 'alert' : 'status'}
             >
-              {t.kind === 'success' ? <CheckCircle2 className="size-4 text-[#7ad3a6]" /> : <XCircle className="size-4 text-[#ff8a8a]" />}
+              {t.kind === 'success' ? <CheckCircle2 className="size-4 text-on-ink-ok" /> : <XCircle className="size-4 text-on-ink-bad" />}
               {t.message}
             </motion.div>
           ))}

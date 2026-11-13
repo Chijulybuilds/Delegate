@@ -3,11 +3,12 @@ import { isManagerRole, type MemberRole } from '@delegate/shared';
 import { Copy, Plus, RefreshCw } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
-import { Avatar, Button, Card, Input, Spinner } from '../components/ui';
+import { Avatar, Button, Card, Input, Select, Spinner } from '../components/ui';
 import { api } from '../lib/api';
 import { timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
 import { useWorkspace } from './data';
+import { departmentOptions, roleOptions } from './options';
 
 const roleLabel: Record<MemberRole, string> = { owner: 'Owner', manager: 'Manager', member: 'Staff' };
 const PALETTE = ['#6E56CF', '#0EA5A4', '#D9480F', '#2B7FFF', '#2F9E6A', '#B4232A', '#8A5A00'];
@@ -77,32 +78,26 @@ export default function TeamPage() {
                   </p>
                 </div>
                 {isManager ? (
-                  <select
-                    className="h-9 rounded-full border border-line bg-paper px-3 text-[13px]"
+                  <Select
+                    size="sm"
+                    align="end"
                     value={m.departmentId ?? ''}
-                    onChange={(e) => patchMember(m.userId, { departmentId: e.target.value || null })}
+                    onChange={(v) => patchMember(m.userId, { departmentId: v || null })}
+                    options={departmentOptions(ws.departments, { value: '', label: 'No department' })}
                     aria-label={`Department for ${m.fullName}`}
-                  >
-                    <option value="">No department</option>
-                    {ws.departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 ) : (
                   <span className="text-sm text-mute">{ws.departments.find((d) => d.id === m.departmentId)?.name ?? '—'}</span>
                 )}
                 {isOwner && m.role !== 'owner' ? (
-                  <select
-                    className="h-9 rounded-full border border-line bg-paper px-3 text-[13px]"
+                  <Select
+                    size="sm"
+                    align="end"
                     value={m.role}
-                    onChange={(e) => patchMember(m.userId, { role: e.target.value })}
+                    onChange={(v) => patchMember(m.userId, { role: v })}
+                    options={roleOptions.filter((r) => r.value !== 'owner')}
                     aria-label={`Role for ${m.fullName}`}
-                  >
-                    <option value="member">Staff</option>
-                    <option value="manager">Manager</option>
-                  </select>
+                  />
                 ) : (
                   <span className="rounded-full border border-line px-3 py-1 text-[13px] text-ink-2">{roleLabel[m.role]}</span>
                 )}

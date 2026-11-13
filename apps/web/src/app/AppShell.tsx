@@ -1,5 +1,5 @@
 import { isManagerRole, type AppNotification } from '@delegate/shared';
-import { Activity, Bell, BarChart3, KanbanSquare, LogOut, Repeat2, Settings, Users } from 'lucide-react';
+import { Activity, Bell, BarChart3, KanbanSquare, Repeat2, Settings, Users } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
@@ -7,6 +7,7 @@ import { Avatar, cx, EASE, FullPageSpinner, Logo, LogoMark } from '../components
 import { useAuth } from '../lib/auth';
 import { timeAgo } from '../lib/format';
 import { useBoard, useMarkRead, useNotifications, useRealtimeHeartbeat, useWorkspace } from './data';
+import { UserMenu } from './UserMenu';
 
 const NAV = [
   { to: '/app', label: 'Today', icon: KanbanSquare, end: true },
@@ -66,7 +67,7 @@ export default function AppShell() {
               key={n.to}
               to={n.to}
               end={n.end}
-              className={({ isActive }) => cx('relative flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] transition-colors', isActive ? 'text-ink' : 'text-mute hover:bg-black/[0.03] hover:text-ink')}
+              className={({ isActive }) => cx('relative flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] transition-colors', isActive ? 'text-ink' : 'text-mute hover:bg-ink/[0.04] hover:text-ink')}
             >
               {({ isActive }) => (
                 <>
@@ -80,7 +81,7 @@ export default function AppShell() {
                     </span>
                   )}
                   {n.label === 'Today' && awaitingAudit > 0 && (
-                    <span className="relative ml-auto rounded-full bg-s-done-soft px-2 text-[11px] font-medium text-[#1E6B47]" title="Awaiting your audit">
+                    <span className="relative ml-auto rounded-full bg-s-done-soft px-2 text-[11px] font-medium text-s-done-ink" title="Awaiting your audit">
                       {awaitingAudit}
                     </span>
                   )}
@@ -90,17 +91,8 @@ export default function AppShell() {
           ))}
         </nav>
         <PlanCard />
-        <div className="mt-auto flex items-center gap-3 rounded-2xl px-2 py-2">
-          <Avatar name={me.profile.fullName} src={me.profile.avatarUrl} size={34} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium" data-testid="current-user">
-              {me.profile.fullName}
-            </p>
-            <p className="truncate text-xs text-mute">{me.profile.email}</p>
-          </div>
-          <button onClick={() => signOut()} className="grid size-8 place-items-center rounded-full text-mute hover:bg-black/5 hover:text-ink" aria-label="Sign out" title="Sign out">
-            <LogOut className="size-4" />
-          </button>
+        <div className="mt-auto">
+          <UserMenu ws={ws.data} variant="sidebar" />
         </div>
       </aside>
 
@@ -112,7 +104,7 @@ export default function AppShell() {
         </div>
         <div className="flex items-center gap-1">
           <NotificationBell />
-          <Avatar name={me.profile.fullName} src={me.profile.avatarUrl} size={30} />
+          <UserMenu ws={ws.data} variant="avatar" />
         </div>
       </header>
 
@@ -200,7 +192,7 @@ function NotificationBell() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative grid size-9 place-items-center rounded-full text-ink-2 hover:bg-black/5"
+        className="relative grid size-9 place-items-center rounded-full text-ink-2 hover:bg-ink/5"
         aria-label={unread ? `Notifications (${unread} unread)` : 'Notifications'}
         aria-expanded={open}
         data-testid="bell"

@@ -112,7 +112,7 @@ export default function VelocityPage({ embedded = false }: { embedded?: boolean 
                       <td className="py-3 text-right tabular-nums">{pct(r.onTimeRate)}</td>
                       <td className="px-5 py-3 text-right tabular-nums sm:px-6">
                         {r.openNow}
-                        {r.blockedNow > 0 && <span className="ml-1.5 rounded-full bg-s-active-soft px-1.5 py-0.5 text-[11px] text-[#8A5A00]">{r.blockedNow} blocked</span>}
+                        {r.blockedNow > 0 && <span className="ml-1.5 rounded-full bg-s-active-soft px-1.5 py-0.5 text-[11px] text-s-active-ink">{r.blockedNow} blocked</span>}
                       </td>
                     </tr>
                   ))}

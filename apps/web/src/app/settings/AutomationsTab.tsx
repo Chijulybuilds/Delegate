@@ -1,11 +1,18 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { isManagerRole } from '@delegate/shared';
-import { Zap } from 'lucide-react';
+import { Moon, Sun, Zap } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '../../components/Toast';
-import { Button, Card, Field, Input } from '../../components/ui';
+import { Button, Card, Field, Input, Select, type SelectOption } from '../../components/ui';
 import { api } from '../../lib/api';
 import type { WorkspaceData } from '../data';
+
+const HOURS: SelectOption[] = Array.from({ length: 24 }, (_, h) => ({
+  value: String(h),
+  label: `${String(h).padStart(2, '0')}:00`,
+  description: h === 8 ? 'Recommended: before the day starts' : h < 6 ? 'Night' : h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening',
+  icon: h >= 6 && h < 18 ? <Sun className="size-4 text-mute" /> : <Moon className="size-4 text-mute" />,
+}));
 
 export function AutomationsTab({ ws }: { ws: WorkspaceData }) {
   const qc = useQueryClient();
@@ -84,13 +91,14 @@ export function AutomationsTab({ ws }: { ws: WorkspaceData }) {
             Send the morning brief
           </label>
           <Field label="Send at" hint={`Local time in ${ws.org.timezone}`}>
-            <select className="h-11 w-full rounded-xl border border-line bg-paper px-3.5 text-sm" value={digest.hour} onChange={(e) => setDigest({ ...digest, hour: Number(e.target.value) })} disabled={!canManage}>
-              {Array.from({ length: 24 }, (_, h) => (
-                <option key={h} value={h}>
-                  {String(h).padStart(2, '0')}:00
-                </option>
-              ))}
-            </select>
+            <Select
+              value={String(digest.hour)}
+              onChange={(v) => setDigest({ ...digest, hour: Number(v) })}
+              options={HOURS}
+              searchable={false}
+              disabled={!canManage}
+              aria-label="Send at"
+            />
           </Field>
           {canManage && (
             <Button type="submit" loading={busy === 'digest'}>

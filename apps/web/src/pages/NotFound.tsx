@@ -10,7 +10,7 @@ export default function NotFound() {
       <div className="m-auto text-center">
         <p className="text-sm text-faint">404</p>
         <h1 className="mt-2 text-[clamp(2.2rem,5vw,3.4rem)] font-medium leading-[1] tracking-display">
-          <span className="text-[#6d6d66]">This ticket</span> doesn’t exist.
+          <span className="text-ink-soft">This ticket</span> doesn’t exist.
         </h1>
         <Link to="/" className="mt-8 inline-block">
           <Button>Back to home</Button>

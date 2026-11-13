@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { card, loginAs, resetDemo } from './helpers';
+import { card, choose, loginAs, resetDemo } from './helpers';
 
 /**
  * The SaaS layer, end to end, in demo mode: providers are simulated by the server
@@ -85,7 +85,7 @@ test.describe('SaaS layer', () => {
     await page.getByTestId('new-playbook').click();
     const form = page.getByTestId('playbook-form');
     await form.getByTestId('playbook-name').fill('Friday close-out');
-    await form.getByTestId('playbook-cadence').selectOption('weekly');
+    await choose(page, 'playbook-cadence', 'weekly');
     await form.getByTestId('playbook-item-title').first().fill('Reconcile the petty cash box');
     await form.getByTestId('playbook-save').click();
     const pb = page.getByTestId('playbook-card').filter({ hasText: 'Friday close-out' });
@@ -103,7 +103,7 @@ test.describe('SaaS layer', () => {
     await loginAs(page, 'demo-ada');
     await page.getByTestId('new-task').click();
     await page.getByTestId('task-title').fill(title);
-    await page.getByTestId('task-assignee').selectOption('demo-tunde');
+    await choose(page, 'task-assignee', 'demo-tunde');
     await page.getByTestId('task-submit').click();
     await expect(card(page, title)).toBeVisible();
 

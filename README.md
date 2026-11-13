@@ -13,7 +13,7 @@
 | Area | Highlights |
 |---|---|
 | **Landing page** | Milk/light-grey studio look in Inter Tight. One persistent motion carries the whole page: a photographed hand holding a phone rises in the hero and travels with the scroll. The phone shows the real Delegate app, live:<br>**Hero:** the sign-in screen types an email, taps *Continue* and lands on today's board.<br>**How it works:** one ticket steps through Open → In motion → Executed → Audited ✓.<br>**Further down:** the live activity feed, the board, and *All caught up* above the footer.<br>The fingertips sit in front of the screen, as they would in real life. Respects `prefers-reduced-motion`. |
-| **Workspace app** (`/app`) | Six simple pages:<br>**Today**: the board, plus four "what needs me" numbers that double as filters.<br>**Activity**: the live feed.<br>**Insights**: Velocity Pulse and Standup-in-a-Box.<br>**Playbooks**: recurring checklists.<br>**Team**.<br>**Settings**: tabs, with staff only seeing what they can act on.<br>Plus task numbers (`DLG-12`), proof of work (link, note, file, Google Drive), a chat thread per task, Blocker Ping, and a notification bell. |
+| **Workspace app** (`/app`) | Six simple pages:<br>**Today**: the board, plus four "what needs me" numbers that double as filters.<br>**Activity**: the live feed.<br>**Insights**: Velocity Pulse and Standup-in-a-Box.<br>**Playbooks**: recurring checklists.<br>**Team**.<br>**Settings**: tabs, with staff only seeing what they can act on.<br>Plus task numbers (`DLG-12`), proof of work (link, note, file, Google Drive), a chat thread per task, Blocker Ping, and a notification bell.<br>**Light / dark / system theme** from the avatar menu (dashboard only; the public site stays light), and one animated, searchable, keyboard-friendly dropdown used everywhere. |
 | **Billing** | **Stripe** (per-seat, cards worldwide, auto seat sync, customer portal) and **Paystack** (₦ cards, bank transfer, USSD). 14-day Team trial, Starter/Team/Enterprise entitlements, webhook-driven subscriptions. |
 | **Channels** | **Slack** (OAuth install, channel notifications, `/delegate`, message → task shortcut), **Microsoft Teams** (Adaptive Cards via Workflows, `@Delegate` commands via outgoing webhook) and **WhatsApp** (templates, phone linking, quick replies and a one-tap **Start**). One command language everywhere: `new … @tunde tomorrow !high`, `list`, `start/done/block DLG-12`. |
 | **Automations** | Escalation ladder: blocked work alerts managers after 4 h and the owner after 24 h. Overdue alerts, recurring playbooks, and an 8 AM morning brief per time zone, all run by one idempotent cron tick. |
@@ -128,7 +128,7 @@ It needs Python 3.9+ with `numpy` and `pillow`.
 
 ## Status
 
-- ✅ 45 API tests and 36 Playwright end-to-end tests pass against the production build
+- ✅ 45 API tests and 42 Playwright end-to-end tests pass against the production build
 - ✅ Both Supabase migrations checked on PostgreSQL 16: they re-run cleanly, users only see their own workspace, browsers can't write, and the activity log can't be edited or deleted
 - ✅ Vercel entry verified locally: health, cron auth, and webhook signatures with `NODEJS_HELPERS=0`; a loud failure without it
 - ⏳ Live providers need your keys: follow SETUP.md → INTEGRATIONS.md → DEPLOYMENT.md

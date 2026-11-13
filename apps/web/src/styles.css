@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-@theme {
+@theme static {
   --font-sans: 'Inter Tight Variable', 'Inter Tight', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --color-milk: #f3f3f1;
@@ -22,9 +22,89 @@
   --color-s-approved: #2b7fff;
   --color-s-approved-soft: #e7f0ff;
 
+  /* Text that sits on a status' soft background, and other theme-aware accents. */
+  --color-ink-soft: #6d6d66;
+  --color-s-open-ink: #b4232a;
+  --color-s-active-ink: #7a4f00;
+  --color-s-done-ink: #1e6b47;
+  --color-s-approved-ink: #1a56c2;
+  --color-on-ink-ok: #7ad3a6;
+  --color-on-ink-bad: #ff8a8a;
+  --color-bubble: #d9fdd3;
+  --color-avatar-1: #e9e2d8;
+  --color-avatar-2: #dde7e3;
+  --color-avatar-3: #e4e1ee;
+  --color-avatar-4: #eedfdb;
+  --color-avatar-5: #dfe6ef;
+  --color-avatar-6: #ece7d6;
+
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
   --shadow-card: 0 1px 0 rgb(0 0 0 / 0.02), 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.08);
   --shadow-float: 0 24px 60px -24px rgb(0 0 0 / 0.25), 0 2px 6px rgb(0 0 0 / 0.04);
+  --shadow-pop: 0 18px 44px -18px rgb(0 0 0 / 0.22), 0 4px 12px -6px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.02);
+}
+
+/*
+ * Dark theme — the dashboard only. AppShell sets data-theme="dark" on <html> while you're inside
+ * the app (and removes it on the way out), so the landing page and sign-in always stay light.
+ */
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --color-milk: #0f0f0e;
+  --color-milk-2: #181817;
+  --color-paper: #1c1c1b;
+  --color-ink: #f2f2ee;
+  --color-ink-2: #d2d2cc;
+  --color-ink-soft: #8f8f88;
+  --color-mute: #a3a39c;
+  --color-faint: #75756f;
+  --color-line: #2b2b29;
+  --color-line-2: #3b3b38;
+
+  --color-s-open: #f0585d;
+  --color-s-open-soft: rgb(229 72 77 / 0.16);
+  --color-s-active: #f0ad2b;
+  --color-s-active-soft: rgb(232 163 23 / 0.15);
+  --color-s-done: #3bb27a;
+  --color-s-done-soft: rgb(47 158 106 / 0.17);
+  --color-s-approved: #4a91ff;
+  --color-s-approved-soft: rgb(43 127 255 / 0.17);
+
+  --color-s-open-ink: #ff9a9e;
+  --color-s-active-ink: #f6c766;
+  --color-s-done-ink: #7ad8ab;
+  --color-s-approved-ink: #9cc2ff;
+  --color-on-ink-ok: #1e6b47;
+  --color-on-ink-bad: #b4232a;
+  --color-bubble: #1d4a37;
+  --color-avatar-1: #3b342b;
+  --color-avatar-2: #2b3a35;
+  --color-avatar-3: #35313f;
+  --color-avatar-4: #3e302b;
+  --color-avatar-5: #2c3543;
+  --color-avatar-6: #3a3627;
+
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.02) inset, 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-float: 0 24px 60px -24px rgb(0 0 0 / 0.75), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 18px 44px -16px rgb(0 0 0 / 0.7), 0 4px 12px -6px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.03);
+}
+
+/* Switching theme: colours ease across instead of snapping (the View Transition wipe takes over where supported). */
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition:
+    background-color 0.35s ease,
+    border-color 0.35s ease,
+    color 0.35s ease,
+    fill 0.35s ease,
+    box-shadow 0.35s ease !important;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
 @layer base {
@@ -38,11 +118,11 @@
     @apply bg-milk font-sans text-ink;
   }
   ::selection {
-    background: #111;
-    color: #f3f3f1;
+    background: var(--color-ink);
+    color: var(--color-milk);
   }
   :focus-visible {
-    outline: 2px solid #111;
+    outline: 2px solid var(--color-ink);
     outline-offset: 2px;
   }
   button {
@@ -54,7 +134,7 @@
 }
 
 @utility dot-grid {
-  background-image: radial-gradient(circle at center, rgb(0 0 0 / 0.11) 1px, transparent 1.4px);
+  background-image: radial-gradient(circle at center, color-mix(in srgb, var(--color-ink) 11%, transparent) 1px, transparent 1.4px);
   background-size: 7px 7px;
 }
 

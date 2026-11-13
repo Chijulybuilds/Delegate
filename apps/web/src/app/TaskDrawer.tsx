@@ -1,4 +1,4 @@
-import { availableActions, isManagerRole, TASK_PRIORITIES, taskRef, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
+import { availableActions, isManagerRole, taskRef, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
 import { Download, FileText, HardDrive, Link2, Paperclip, Send, ShieldCheck, Sparkles, StickyNote, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -10,6 +10,7 @@ import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { clock, dueLabel, timeAgo, toLocalInput } from '../lib/format';
 import { memberName, useComment, useTaskDetail, useTransition, useUpdateTask, type WorkspaceData } from './data';
+import { memberOptions, priorityOptions } from './options';
 
 export function TaskDrawer({ taskId, intent, onClose, ws }: { taskId: string | null; intent: string | null; onClose: () => void; ws: WorkspaceData }) {
   return (
@@ -86,7 +87,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
             {taskRef(task.seq)}
           </button>
         </div>
-        <button onClick={onClose} className="grid size-9 place-items-center rounded-full hover:bg-black/5" aria-label="Close">
+        <button onClick={onClose} className="grid size-9 place-items-center rounded-full hover:bg-ink/5" aria-label="Close">
           <X className="size-[18px]" />
         </button>
       </div>
@@ -118,7 +119,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
           )}
 
           {task.status === 'blocked' && (
-            <div className="mt-5 rounded-2xl border border-s-active/40 bg-s-active-soft px-4 py-3 text-sm text-[#6b4700]">
+            <div className="mt-5 rounded-2xl border border-s-active/40 bg-s-active-soft px-4 py-3 text-sm text-s-active-ink">
               <p className="font-medium">Blocked{task.waitingOnId ? ` — waiting on ${memberName(ws.members, task.waitingOnId)}` : ''}</p>
               <p className="mt-0.5">{task.blockedReason}</p>
             </div>
@@ -128,13 +129,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
           <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line text-sm">
             <Meta label="Assignee">
               {canEdit && isManager ? (
-                <select className="w-full bg-transparent font-medium outline-none" value={task.assigneeId} onChange={(e) => edit({ assigneeId: e.target.value })} aria-label="Assignee">
-                  {ws.members.map((m) => (
-                    <option key={m.userId} value={m.userId}>
-                      {m.fullName}
-                    </option>
-                  ))}
-                </select>
+                <Select size="inline" value={task.assigneeId} onChange={(v) => edit({ assigneeId: v })} options={memberOptions(ws.members, { departments: ws.departments })} aria-label="Assignee" className="max-w-full" />
               ) : (
                 <span className="flex items-center gap-2 font-medium">
                   <Avatar name={memberName(ws.members, task.assigneeId)} size={20} />
@@ -145,13 +140,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
             <Meta label="Assigned by">{memberName(ws.members, task.createdById)}</Meta>
             <Meta label="Priority">
               {canEdit ? (
-                <select className="w-full bg-transparent font-medium capitalize outline-none" value={task.priority} onChange={(e) => edit({ priority: e.target.value })} aria-label="Priority">
-                  {TASK_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
+                <Select size="inline" value={task.priority} onChange={(v) => edit({ priority: v })} options={priorityOptions} aria-label="Priority" />
               ) : (
                 <span className="font-medium capitalize">{task.priority}</span>
               )}
@@ -160,13 +149,13 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
               {canEdit ? (
                 <input
                   type="datetime-local"
-                  className={cx('w-full bg-transparent font-medium outline-none', due.overdue && 'text-[#B4232A]')}
+                  className={cx('w-full bg-transparent font-medium outline-none', due.overdue && 'text-s-open-ink')}
                   defaultValue={task.dueAt ? toLocalInput(new Date(task.dueAt)) : ''}
                   onBlur={(e) => e.target.value && edit({ dueAt: new Date(e.target.value).toISOString() })}
                   aria-label="Due date"
                 />
               ) : (
-                <span className={cx('font-medium', due.overdue && 'text-[#B4232A]')}>{due.text}</span>
+                <span className={cx('font-medium', due.overdue && 'text-s-open-ink')}>{due.text}</span>
               )}
             </Meta>
             <Meta label="Department">
@@ -188,7 +177,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
               <div
                 className={cx(
                   'mb-3 flex items-start gap-2.5 rounded-2xl px-3.5 py-3 text-sm',
-                  latestAi.aiVerdict === 'pass' ? 'bg-s-done-soft text-[#1E6B47]' : latestAi.aiVerdict === 'review' ? 'bg-s-active-soft text-[#6b4700]' : 'bg-s-open-soft text-[#B4232A]',
+                  latestAi.aiVerdict === 'pass' ? 'bg-s-done-soft text-s-done-ink' : latestAi.aiVerdict === 'review' ? 'bg-s-active-soft text-s-active-ink' : 'bg-s-open-soft text-s-open-ink',
                 )}
               >
                 <Sparkles className="mt-0.5 size-4 shrink-0" />
@@ -292,7 +281,7 @@ function ProofItem({ proof, taskId, author }: { proof: TaskProof; taskId: string
         )}
         {proof.note && <p className={cx('text-ink-2', proof.kind !== 'note' && 'mt-0.5')}>{proof.note}</p>}
         {proof.source !== 'manual' && (
-          <span className={cx('mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium', proof.verified ? 'bg-s-approved-soft text-[#1A56C2]' : 'bg-milk text-mute')}>
+          <span className={cx('mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium', proof.verified ? 'bg-s-approved-soft text-s-approved-ink' : 'bg-milk text-mute')}>
             {proof.verified ? <ShieldCheck className="size-3" /> : null}
             {proof.verified ? 'Verified by' : 'From'} {proof.source === 'gdrive' ? 'Google Drive' : proof.source === 'github' ? 'GitHub' : 'WhatsApp'}
           </span>
@@ -455,7 +444,7 @@ function SubmitProofModal({ open, onClose, taskId }: { open: boolean; onClose: (
           )}
         </div>
         {drive && (
-          <p className={cx('flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-sm', drive.preview.verified ? 'bg-s-approved-soft text-[#1A56C2]' : 'bg-s-active-soft text-[#6b4700]')}>
+          <p className={cx('flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-sm', drive.preview.verified ? 'bg-s-approved-soft text-s-approved-ink' : 'bg-s-active-soft text-s-active-ink')}>
             <ShieldCheck className="mt-0.5 size-4 shrink-0" />
             <span>
               <span className="font-medium">{drive.preview.verified ? 'Verified with Google Drive.' : 'Attached, not verified.'}</span> {drive.preview.note}
@@ -508,16 +497,13 @@ function BlockModal({ open, onClose, taskId, ws, assigneeId }: { open: boolean; 
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Waiting on the signed volume forecast before the courier call." required minLength={3} data-testid="block-reason" />
         </Field>
         <Field label="Waiting on (optional)">
-          <Select value={waitingOnId} onChange={(e) => setWaitingOnId(e.target.value)} data-testid="block-waiting-on">
-            <option value="">Nobody specific</option>
-            {ws.members
-              .filter((m) => m.userId !== assigneeId)
-              .map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.fullName}
-                </option>
-              ))}
-          </Select>
+          <Select
+            value={waitingOnId}
+            onChange={setWaitingOnId}
+            options={[{ value: '', label: 'Nobody specific', description: 'Just flag it' }, ...memberOptions(ws.members.filter((m) => m.userId !== assigneeId), { departments: ws.departments })]}
+            aria-label="Waiting on"
+            data-testid="block-waiting-on"
+          />
         </Field>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={onClose}>

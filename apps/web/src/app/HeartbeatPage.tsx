@@ -1,4 +1,5 @@
 import { STATUS_META, type LedgerEvent } from '@delegate/shared';
+import { Users } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -6,6 +7,7 @@ import { Avatar, cx, EASE, EmptyState, Select, Spinner } from '../components/ui'
 import { clock, timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
 import { memberName, useFeed, useWorkspace } from './data';
+import { memberOptions } from './options';
 import { describeEvent } from './TaskDrawer';
 
 const toneDot: Record<string, string> = { red: 'bg-s-open', amber: 'bg-s-active', green: 'bg-s-done', blue: 'bg-s-approved' };
@@ -50,14 +52,14 @@ export default function HeartbeatPage() {
               </span>
               Live
             </span>
-            <Select value={person} onChange={(e) => setPerson(e.target.value)} className="h-9 w-auto! rounded-full text-[13px]" aria-label="Filter by person">
-              <option value="all">Everyone</option>
-              {ws.data?.members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.fullName}
-                </option>
-              ))}
-            </Select>
+            <Select
+              size="sm"
+              align="end"
+              value={person}
+              onChange={setPerson}
+              options={[{ value: 'all', label: 'Everyone', icon: <Users className="size-4 text-mute" /> }, ...memberOptions(ws.data?.members ?? [], { departments: ws.data?.departments })]}
+              aria-label="Filter by person"
+            />
           </>
         }
       />
@@ -95,7 +97,7 @@ export default function HeartbeatPage() {
                               describeEvent(e, ws.data, true)
                             )}
                           </p>
-                          {blocked && typeof e.meta.reason === 'string' && <p className="mt-1 text-sm text-[#6b4700]">“{e.meta.reason}”</p>}
+                          {blocked && typeof e.meta.reason === 'string' && <p className="mt-1 text-sm text-s-active-ink">“{e.meta.reason}”</p>}
                           {e.type === 'task.changes_requested' && typeof e.meta.comment === 'string' && <p className="mt-1 text-sm text-mute">“{e.meta.comment}”</p>}
                           <p className="mt-1 text-xs text-faint">
                             {clock(e.createdAt)} · {timeAgo(e.createdAt)}

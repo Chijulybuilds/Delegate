@@ -107,7 +107,7 @@ export function BillingTab({ ws }: { ws: WorkspaceData }) {
         <p className="text-xs uppercase tracking-[0.14em] text-faint">Current plan</p>
         <p className="mt-2 text-3xl font-medium tracking-display">
           {ent.effectivePlan === 'starter' ? 'Starter' : PLANS[ent.plan].name}
-          <span className={cx('ml-3 align-middle rounded-full px-2.5 py-1 text-xs font-medium', sub.status === 'active' ? 'bg-s-done-soft text-[#1E6B47]' : sub.status === 'past_due' ? 'bg-s-open-soft text-[#B4232A]' : 'bg-milk text-mute')} data-testid="billing-status">
+          <span className={cx('ml-3 align-middle rounded-full px-2.5 py-1 text-xs font-medium', sub.status === 'active' ? 'bg-s-done-soft text-s-done-ink' : sub.status === 'past_due' ? 'bg-s-open-soft text-s-open-ink' : 'bg-milk text-mute')} data-testid="billing-status">
             {statusText[sub.status] ?? sub.status}
           </span>
         </p>

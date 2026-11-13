@@ -227,8 +227,9 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-That builds production, starts it on `:3100` with a fresh demo workspace and simulated providers, and runs 36 browser tests on desktop and mobile:
+That builds production, starts it on `:3100` with a fresh demo workspace and simulated providers, and runs 42 browser tests on desktop and mobile:
 - landing page (the phone signs in by itself and walks a ticket through all four states), the full accountability loop, blockers, chat, filters, onboarding and the admin console
 - every way sign-in can fail shows its reason and fix
+- light/dark theme from the avatar menu, and the dropdowns' mouse, keyboard and search behaviour
 - trial → checkout → Team, the WhatsApp simulator, Slack connect + test message, GitHub webhook setup
 - playbooks, the notification bell, glance filters and automations

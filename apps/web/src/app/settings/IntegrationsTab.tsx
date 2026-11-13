@@ -83,7 +83,7 @@ export function IntegrationsTab({ ws }: { ws: WorkspaceData }) {
                         <span
                           className={cx(
                             'rounded-full px-2 py-0.5 text-xs',
-                            d.status === 'sent' ? 'bg-s-done-soft text-[#1E6B47]' : d.status === 'failed' ? 'bg-s-open-soft text-[#B4232A]' : 'bg-milk text-mute',
+                            d.status === 'sent' ? 'bg-s-done-soft text-s-done-ink' : d.status === 'failed' ? 'bg-s-open-soft text-s-open-ink' : 'bg-milk text-mute',
                           )}
                           title={d.error ?? undefined}
                         >
@@ -113,14 +113,14 @@ function Shell({ icon, title, blurb, s, children, testId }: { icon: ReactNode; t
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="text-[15px] font-medium">{title}</h3>
-            <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-medium', s.connected ? 'bg-s-done-soft text-[#1E6B47]' : 'bg-milk text-mute')} data-testid={`${testId}-status`}>
+            <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-medium', s.connected ? 'bg-s-done-soft text-s-done-ink' : 'bg-milk text-mute')} data-testid={`${testId}-status`}>
               {s.connected ? 'Connected' : 'Not connected'}
             </span>
           </div>
           <p className="mt-0.5 text-sm text-mute">{blurb}</p>
         </div>
       </div>
-      {s.lastError && s.connected && <p className="mt-3 rounded-xl bg-s-open-soft px-3 py-2 text-xs text-[#B4232A]">Last error: {s.lastError}</p>}
+      {s.lastError && s.connected && <p className="mt-3 rounded-xl bg-s-open-soft px-3 py-2 text-xs text-s-open-ink">Last error: {s.lastError}</p>}
       <div className="mt-4 flex-1 space-y-3 text-sm">{children}</div>
     </Card>
   );
@@ -271,7 +271,7 @@ function WhatsAppCard({ s, canManage, run, teamPlan, simulator }: { s: Integrati
           <p className="mb-2 text-xs font-medium text-mute">Simulator (demo) — message Delegate as yourself</p>
           <div className="mb-2 max-h-52 space-y-1.5 overflow-y-auto">
             {chat.map((m, i) => (
-              <p key={i} className={cx('w-fit max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-1.5 text-xs', m.from === 'me' ? 'ml-auto bg-[#d9fdd3]' : 'bg-paper')} data-testid={m.from === 'bot' ? 'wa-reply' : undefined}>
+              <p key={i} className={cx('w-fit max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-1.5 text-xs', m.from === 'me' ? 'ml-auto bg-bubble' : 'bg-paper')} data-testid={m.from === 'bot' ? 'wa-reply' : undefined}>
                 {m.text}
               </p>
             ))}
@@ -336,7 +336,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
       <p className="text-[11px] uppercase tracking-[0.12em] text-faint">{label}</p>
       <div className="mt-1 flex items-center gap-2">
         <code className="min-w-0 flex-1 truncate rounded-lg bg-milk px-2 py-1.5 font-mono text-xs">{value}</code>
-        <button onClick={() => navigator.clipboard?.writeText(value).then(() => toast.success(`${label} copied`))} className="grid size-8 place-items-center rounded-full text-mute hover:bg-black/5 hover:text-ink" aria-label={`Copy ${label}`}>
+        <button onClick={() => navigator.clipboard?.writeText(value).then(() => toast.success(`${label} copied`))} className="grid size-8 place-items-center rounded-full text-mute hover:bg-ink/5 hover:text-ink" aria-label={`Copy ${label}`}>
           <Copy className="size-4" />
         </button>
       </div>

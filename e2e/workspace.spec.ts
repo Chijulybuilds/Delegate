@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { card, lane, loginAs, resetDemo } from './helpers';
+import { card, choose, lane, loginAs, resetDemo } from './helpers';
 
 const sel = (title: string) => `[data-testid="task-card"][data-task-title="${title}"]`;
 
@@ -15,7 +15,7 @@ test.describe.serial('Accountability loop: Red → Amber → Green → Blue ✓'
     await page.getByTestId('new-task').click();
     await page.getByTestId('task-title').fill(title);
     await page.getByLabel('Brief').fill('One-page summary of all Q4 vendor spend, sent to finance.');
-    await page.getByTestId('task-assignee').selectOption('demo-tunde');
+    await choose(page, 'task-assignee', 'demo-tunde');
     await page.getByTestId('task-submit').click();
     await expect(lane(page, 'open').locator(sel(title))).toBeVisible();
     await expect(card(page, title)).toHaveAttribute('data-status', 'open');
@@ -76,7 +76,7 @@ test.describe('Collaboration', () => {
     await card(page, 'Write job post for ops associate').click();
     await page.getByTestId('action-block').click();
     await page.getByTestId('block-reason').fill('Need the approved salary band before posting.');
-    await page.getByTestId('block-waiting-on').selectOption('demo-kemi');
+    await choose(page, 'block-waiting-on', 'demo-kemi');
     await page.getByTestId('block-submit').click();
     await expect(page.getByTestId('action-unblock')).toBeVisible();
     await page.keyboard.press('Escape');

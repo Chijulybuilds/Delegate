@@ -1,15 +1,22 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { describeCadence, isManagerRole, PLAYBOOK_CADENCES, TASK_PRIORITIES, type Playbook, type PlaybookCadence, type TaskPriority } from '@delegate/shared';
-import { Pencil, Play, Plus, Repeat2, Trash2, X } from 'lucide-react';
+import { describeCadence, isManagerRole, type Playbook, type PlaybookCadence, type TaskPriority } from '@delegate/shared';
+import { Briefcase, CalendarDays, CalendarRange, Pencil, Play, Plus, Repeat, Repeat2, Trash2, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
-import { Avatar, Button, Card, cx, EmptyState, Field, Input, Modal, Select, Spinner } from '../components/ui';
+import { Avatar, Button, Card, cx, EmptyState, Field, Input, Modal, Select, Spinner, type SelectOption } from '../components/ui';
 import { api } from '../lib/api';
 import { timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
 import { memberName, usePlaybooks, useWorkspace, type WorkspaceData } from './data';
+import { memberOptions, priorityOptions } from './options';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const CADENCE_OPTIONS: Array<SelectOption<PlaybookCadence>> = [
+  { value: 'daily', label: 'Every day', description: 'Including weekends', icon: <Repeat className="size-4 text-mute" /> },
+  { value: 'weekdays', label: 'Weekdays', description: 'Monday to Friday', icon: <Briefcase className="size-4 text-mute" /> },
+  { value: 'weekly', label: 'Weekly', description: 'Once a week, on a day you pick', icon: <CalendarDays className="size-4 text-mute" /> },
+  { value: 'monthly', label: 'Monthly', description: 'Once a month, on a date you pick', icon: <CalendarRange className="size-4 text-mute" /> },
+];
 
 /** Recurring checklists: "every weekday at 08:00, these 3 tasks land on these people". */
 export default function PlaybooksPage() {
@@ -72,12 +79,12 @@ export default function PlaybooksPage() {
               </div>
               {canEdit && (
                 <div className="flex gap-1">
-                  <button onClick={() => setEditing(pb)} className="grid size-8 place-items-center rounded-full text-mute hover:bg-black/5 hover:text-ink" aria-label={`Edit ${pb.name}`}>
+                  <button onClick={() => setEditing(pb)} className="grid size-8 place-items-center rounded-full text-mute hover:bg-ink/5 hover:text-ink" aria-label={`Edit ${pb.name}`}>
                     <Pencil className="size-4" />
                   </button>
                   <button
                     onClick={() => confirm(`Delete “${pb.name}”? Tasks it already created stay.`) && act(() => api.del(`/playbooks/${pb.id}`), 'Playbook deleted')}
-                    className="grid size-8 place-items-center rounded-full text-mute hover:bg-black/5 hover:text-ink"
+                    className="grid size-8 place-items-center rounded-full text-mute hover:bg-ink/5 hover:text-ink"
                     aria-label={`Delete ${pb.name}`}
                   >
                     <Trash2 className="size-4" />
@@ -168,23 +175,11 @@ function PlaybookEditor({ ws, playbook, onClose, onSaved }: { ws: WorkspaceData;
         </Field>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Repeats">
-            <Select value={draft.cadence} onChange={(e) => setDraft({ ...draft, cadence: e.target.value as PlaybookCadence })} data-testid="playbook-cadence">
-              {PLAYBOOK_CADENCES.map((c) => (
-                <option key={c} value={c}>
-                  {{ daily: 'Every day', weekdays: 'Weekdays', weekly: 'Weekly', monthly: 'Monthly' }[c]}
-                </option>
-              ))}
-            </Select>
+            <Select value={draft.cadence} onChange={(v) => setDraft({ ...draft, cadence: v })} options={CADENCE_OPTIONS} aria-label="Repeats" data-testid="playbook-cadence" />
           </Field>
           {draft.cadence === 'weekly' && (
             <Field label="On">
-              <Select value={String(draft.weekday ?? 1)} onChange={(e) => setDraft({ ...draft, weekday: Number(e.target.value) })}>
-                {WEEKDAYS.map((d, i) => (
-                  <option key={d} value={i}>
-                    {d}
-                  </option>
-                ))}
-              </Select>
+              <Select value={String(draft.weekday ?? 1)} onChange={(v) => setDraft({ ...draft, weekday: Number(v) })} options={WEEKDAYS.map((d, i) => ({ value: String(i), label: d }))} aria-label="On" />
             </Field>
           )}
           {draft.cadence === 'monthly' && (
@@ -203,22 +198,10 @@ function PlaybookEditor({ ws, playbook, onClose, onSaved }: { ws: WorkspaceData;
             {draft.items.map((item, i) => (
               <div key={i} className="grid gap-2 rounded-2xl border border-line bg-milk p-3 sm:grid-cols-[1fr_170px_110px_92px_32px]">
                 <Input value={item.title} onChange={(e) => setItem(i, { title: e.target.value })} placeholder="Reconcile yesterday's payments" required minLength={3} className="h-10" aria-label="Task title" data-testid="playbook-item-title" />
-                <Select value={item.assigneeId} onChange={(e) => setItem(i, { assigneeId: e.target.value })} className="h-10" aria-label="Assignee">
-                  {ws.members.map((m) => (
-                    <option key={m.userId} value={m.userId}>
-                      {m.fullName}
-                    </option>
-                  ))}
-                </Select>
-                <Select value={item.priority} onChange={(e) => setItem(i, { priority: e.target.value as TaskPriority })} className="h-10 capitalize" aria-label="Priority">
-                  {TASK_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </Select>
+                <Select value={item.assigneeId} onChange={(v) => setItem(i, { assigneeId: v })} options={memberOptions(ws.members, { departments: ws.departments })} className="h-10!" aria-label="Assignee" />
+                <Select value={item.priority} onChange={(v) => setItem(i, { priority: v })} options={priorityOptions} className="h-10!" aria-label="Priority" />
                 <Input type="number" min={0.5} max={744} step={0.5} value={item.dueInHours} onChange={(e) => setItem(i, { dueInHours: Number(e.target.value) })} className="h-10" aria-label="Due in hours" title="Due this many hours after it runs" />
-                <button type="button" onClick={() => setDraft({ ...draft, items: draft.items.filter((_, j) => j !== i) })} disabled={draft.items.length === 1} className="grid size-10 place-items-center rounded-full text-mute hover:bg-black/5 disabled:opacity-30" aria-label="Remove task">
+                <button type="button" onClick={() => setDraft({ ...draft, items: draft.items.filter((_, j) => j !== i) })} disabled={draft.items.length === 1} className="grid size-10 place-items-center rounded-full text-mute hover:bg-ink/5 disabled:opacity-30" aria-label="Remove task">
                   <X className="size-4" />
                 </button>
               </div>

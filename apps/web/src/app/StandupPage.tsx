@@ -82,7 +82,7 @@ export default function StandupPage({ embedded = false }: { embedded?: boolean }
                 rows={data.brief.blockers}
                 empty="No blockers. Clear runway."
                 render={(r) => (
-                  <p className="mt-0.5 text-sm text-[#6b4700]">
+                  <p className="mt-0.5 text-sm text-s-active-ink">
                     {r.waitingOn ? `Waiting on ${r.waitingOn}: ` : ''}
                     {r.task.blockedReason}
                   </p>
