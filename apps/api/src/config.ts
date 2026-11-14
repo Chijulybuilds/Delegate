@@ -154,10 +154,17 @@ export function loadConfig(overrides: Partial<Record<keyof Env, string>> = {}): 
   const e = parsed.data;
   const isProduction = e.NODE_ENV === 'production';
 
+  // Only the project's base address works: "https://abcd.supabase.co". A pasted endpoint such as
+  // ".../rest/v1/" would send "Continue with Google" to ".../rest/v1/auth/v1/authorize", which
+  // Supabase rejects with "No API key found in request". Keep just the origin.
+  const supabaseUrl = e.SUPABASE_URL ? new URL(e.SUPABASE_URL).origin : '';
+  if (e.SUPABASE_URL && supabaseUrl !== e.SUPABASE_URL.replace(/\/+$/, '')) {
+    console.warn(`[delegate] SUPABASE_URL should be just ${supabaseUrl} — ignoring the extra "${new URL(e.SUPABASE_URL).pathname}".`);
+  }
   const supabase =
-    e.SUPABASE_URL && e.SUPABASE_SERVICE_ROLE_KEY && e.SUPABASE_ANON_KEY
+    supabaseUrl && e.SUPABASE_SERVICE_ROLE_KEY && e.SUPABASE_ANON_KEY
       ? {
-          url: e.SUPABASE_URL.replace(/\/$/, ''),
+          url: supabaseUrl,
           anonKey: e.SUPABASE_ANON_KEY,
           serviceRoleKey: e.SUPABASE_SERVICE_ROLE_KEY,
           jwtSecret: e.SUPABASE_JWT_SECRET || null,
