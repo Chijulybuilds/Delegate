@@ -154,7 +154,17 @@ export default function LoginPage() {
                 <span className="h-px flex-1 bg-line" /> or with your email <span className="h-px flex-1 bg-line" />
               </div>
               <EmailAuth signup={signup} />
-              <p className="mt-5 text-center text-xs text-faint">By continuing you agree to the Terms and Privacy Policy.</p>
+              <p className="mt-5 text-center text-xs text-faint">
+                By continuing you agree to the{' '}
+                <Link to="/terms" className="underline underline-offset-2 hover:text-ink">
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy" className="underline underline-offset-2 hover:text-ink">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
             </div>
           )}
 

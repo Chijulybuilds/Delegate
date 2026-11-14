@@ -108,3 +108,21 @@ test.describe('Landing page', () => {
     }
   });
 });
+
+test.describe('Legal pages', () => {
+  test('Privacy Policy and Terms are public, linked from the footer and the sign-in page', async ({ page }) => {
+    await page.goto('/');
+    const footer = page.locator('footer');
+    await expect(footer.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy');
+    await expect(footer.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms');
+    // No made-up contact addresses: contact links only appear once VITE_SUPPORT_EMAIL is set.
+    await expect(page.locator('a[href*="delegate.app"]')).toHaveCount(0);
+
+    await page.goto('/privacy');
+    await expect(page.getByRole('heading', { level: 1, name: 'Privacy Policy' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '4. Who helps us run Delegate' })).toBeVisible();
+    await page.getByRole('navigation', { name: 'Legal' }).getByRole('link', { name: 'Terms' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Terms of Service' })).toBeVisible();
+    await expect(page.getByText('14-day trial of the Team plan')).toBeVisible();
+  });
+});
