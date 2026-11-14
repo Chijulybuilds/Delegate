@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { describeCadence, isManagerRole, type Playbook, type PlaybookCadence, type TaskPriority } from '@delegate/shared';
-import { Briefcase, CalendarDays, CalendarRange, Pencil, Play, Plus, Repeat, Repeat2, Trash2, X } from 'lucide-react';
+import { Briefcase, CalendarDays, CalendarRange, Minus, Pencil, Play, Plus, Repeat, Repeat2, Trash2, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
 import { Avatar, Button, Card, cx, EmptyState, Field, Input, Modal, Select, Spinner, TimePicker, type SelectOption } from '../components/ui';
@@ -97,7 +97,7 @@ export default function PlaybooksPage() {
                 <li key={item.id} className="flex items-center gap-2.5 text-sm">
                   <Avatar name={memberName(ws.data!.members, item.assigneeId)} size={22} />
                   <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                  <span className="shrink-0 text-xs text-faint">due +{item.dueInHours}h</span>
+                  <span className="shrink-0 text-xs text-faint">due in {hoursLabel(item.dueInHours)}</span>
                 </li>
               ))}
             </ul>
@@ -196,14 +196,21 @@ function PlaybookEditor({ ws, playbook, onClose, onSaved }: { ws: WorkspaceData;
           <p className="mb-2 text-[13px] font-medium text-ink-2">Tasks it creates</p>
           <div className="space-y-2">
             {draft.items.map((item, i) => (
-              <div key={i} className="grid gap-2 rounded-2xl border border-line bg-milk p-3 sm:grid-cols-[1fr_170px_110px_92px_32px]">
-                <Input value={item.title} onChange={(e) => setItem(i, { title: e.target.value })} placeholder="Reconcile yesterday's payments" required minLength={3} className="h-10" aria-label="Task title" data-testid="playbook-item-title" />
-                <Select value={item.assigneeId} onChange={(v) => setItem(i, { assigneeId: v })} options={memberOptions(ws.members, { departments: ws.departments })} className="h-10!" aria-label="Assignee" />
-                <Select value={item.priority} onChange={(v) => setItem(i, { priority: v })} options={priorityOptions} className="h-10!" aria-label="Priority" />
-                <Input type="number" min={0.5} max={744} step={0.5} value={item.dueInHours} onChange={(e) => setItem(i, { dueInHours: Number(e.target.value) })} className="h-10" aria-label="Due in hours" title="Due this many hours after it runs" />
-                <button type="button" onClick={() => setDraft({ ...draft, items: draft.items.filter((_, j) => j !== i) })} disabled={draft.items.length === 1} className="grid size-10 place-items-center rounded-full text-mute hover:bg-ink/5 disabled:opacity-30" aria-label="Remove task">
-                  <X className="size-4" />
-                </button>
+              <div key={i} className="space-y-2 rounded-2xl border border-line bg-milk p-3">
+                <div className="flex gap-2">
+                  <Input value={item.title} onChange={(e) => setItem(i, { title: e.target.value })} placeholder="Reconcile yesterday's payments" required minLength={3} className="h-10" aria-label="Task title" data-testid="playbook-item-title" />
+                  <button type="button" onClick={() => setDraft({ ...draft, items: draft.items.filter((_, j) => j !== i) })} disabled={draft.items.length === 1} className="grid size-10 shrink-0 place-items-center rounded-full text-mute hover:bg-ink/5 disabled:opacity-30" aria-label="Remove task">
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[1fr_130px_190px]">
+                  <Select value={item.assigneeId} onChange={(v) => setItem(i, { assigneeId: v })} options={memberOptions(ws.members, { departments: ws.departments })} className="h-10!" aria-label="Assignee" />
+                  <Select value={item.priority} onChange={(v) => setItem(i, { priority: v })} options={priorityOptions} className="h-10!" aria-label="Priority" />
+                  <HoursField value={item.dueInHours} onChange={(v) => setItem(i, { dueInHours: v })} />
+                </div>
+                <p className="px-1 text-xs text-mute" data-testid="playbook-item-due-hint">
+                  Lands on {memberName(ws.members, item.assigneeId).split(' ')[0]}’s board at {draft.timeOfDay} · due {dueAt(draft.timeOfDay, item.dueInHours)}
+                </p>
               </div>
             ))}
           </div>
@@ -221,5 +228,52 @@ function PlaybookEditor({ ws, playbook, onClose, onSaved }: { ws: WorkspaceData;
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** "30 min", "1 hour", "8 hours", "2 days", "36 hours". */
+function hoursLabel(h: number) {
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h >= 24 && h % 24 === 0) return `${h / 24} day${h === 24 ? '' : 's'}`;
+  return `${h} hour${h === 1 ? '' : 's'}`;
+}
+
+/** When a task created at `runsAt` ("08:00") is due, `hours` later: "16:00 the same day", "08:00 the next day"… */
+function dueAt(runsAt: string, hours: number) {
+  const [h, m] = runsAt.split(':').map(Number) as [number, number];
+  const total = h * 60 + m + Math.round(hours * 60);
+  const day = Math.floor(total / 1440);
+  const t = `${String(Math.floor((total % 1440) / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  return day === 0 ? `at ${t} the same day` : day === 1 ? `at ${t} the next day` : `at ${t}, ${day} days later`;
+}
+
+/** "Due in [ 8 ] hours" with − / + steps that grow with the value (½ h, 1 h, then whole days). */
+function HoursField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const step = (dir: 1 | -1) => {
+    const size = value < 1 || (value === 1 && dir < 0) ? 0.5 : value < 24 || (value === 24 && dir < 0) ? 1 : 24;
+    onChange(Math.min(744, Math.max(0.5, value + dir * size)));
+  };
+  return (
+    <div className="flex h-10 items-center gap-1 rounded-xl border border-line bg-paper pl-3 pr-1 text-sm" title="How long after the playbook runs the task is due">
+      <span className="shrink-0 text-mute">Due in</span>
+      <input
+        type="number"
+        min={0.5}
+        max={744}
+        step={0.5}
+        value={value}
+        onChange={(e) => onChange(Math.min(744, Math.max(0.5, Number(e.target.value) || 0.5)))}
+        className="w-9 min-w-0 bg-transparent text-center font-medium tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        aria-label="Due this many hours after it runs"
+        data-testid="playbook-item-hours"
+      />
+      <span className="flex-1 text-mute">{value === 1 ? 'hour' : 'hours'}</span>
+      <button type="button" onClick={() => step(-1)} className="grid size-7 place-items-center rounded-full text-mute hover:bg-ink/5 hover:text-ink" aria-label="Less time">
+        <Minus className="size-3.5" />
+      </button>
+      <button type="button" onClick={() => step(1)} className="grid size-7 place-items-center rounded-full text-mute hover:bg-ink/5 hover:text-ink" aria-label="More time">
+        <Plus className="size-3.5" />
+      </button>
+    </div>
   );
 }
