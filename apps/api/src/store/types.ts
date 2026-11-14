@@ -80,6 +80,13 @@ export interface Store {
   listMembers(orgId: string): Promise<Member[]>;
   addMember(input: Omit<MembershipRecord, 'joinedAt'>): Promise<void>;
   updateMember(orgId: string, userId: string, patch: Partial<Pick<MembershipRecord, 'role' | 'departmentId'>>): Promise<void>;
+  removeMember(orgId: string, userId: string): Promise<void>;
+
+  // Leaving for good
+  /** Deletes a workspace and everything in it: tasks, ledger, files, billing records, integrations. */
+  deleteOrg(orgId: string): Promise<void>;
+  /** Erases a person: anonymises their profile and removes their sign-in. Past work stays, shown as "Deleted user". */
+  eraseUser(userId: string): Promise<void>;
 
   // Departments
   listDepartments(orgId: string): Promise<Department[]>;
@@ -149,4 +156,15 @@ export interface Store {
   getPlaybook(id: string): Promise<Playbook | null>;
   savePlaybook(p: Omit<Playbook, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Playbook>;
   deletePlaybook(id: string): Promise<void>;
+}
+
+/** What an erased person's profile becomes: no name, no email, no photo, no phone, and no way to sign in. */
+export function erasedProfile(userId: string) {
+  return {
+    fullName: 'Deleted user',
+    email: `deleted-${userId.slice(0, 8)}@deleted.invalid`,
+    avatarUrl: null,
+    phone: null,
+    status: 'suspended' as const,
+  };
 }

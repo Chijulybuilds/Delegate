@@ -40,6 +40,7 @@ describe('public endpoints', () => {
     const res = await request(app).get('/api/config').expect(200);
     expect(res.body.authMode).toBe('demo');
     expect(res.body.supabaseAnonKey).toBeNull();
+    expect(res.body.emailOtpLength).toBe(6); // digits in the email sign-up code
   });
 
   it('rejects workspace routes without a token', async () => {
@@ -310,5 +311,12 @@ describe('Supabase URL', () => {
       const c = loadConfig({ NODE_ENV: 'test', SUPABASE_URL: pasted, SUPABASE_ANON_KEY: 'sb_publishable_x', SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_x' });
       expect(c.supabase?.url).toBe('https://abcd.supabase.co');
     }
+  });
+});
+
+describe('environment values', () => {
+  it('ignores stray whitespace and line breaks around pasted values', () => {
+    const c = loadConfig({ NODE_ENV: 'test', SUPABASE_URL: '', GOOGLE_CLIENT_ID: '\n1039-abc.apps.googleusercontent.com  ', GOOGLE_API_KEY: ' AIza-key\n', GOOGLE_PROJECT_NUMBER: '1039\n' });
+    expect(c.google).toEqual({ clientId: '1039-abc.apps.googleusercontent.com', apiKey: 'AIza-key', appId: '1039' });
   });
 });

@@ -24,6 +24,15 @@ const user = (email: string, identities = 1) => ({
   created_at: new Date().toISOString(),
 });
 
+const session = (email: string) => ({ access_token: fakeJwt(email), token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'refresh', user: user(email) });
+
+/** The API recognises the signed-in person (no workspace yet → onboarding). */
+async function mockMe(page: Page) {
+  await page.route('**/api/me', (route) =>
+    route.fulfill({ json: { profile: { id: 'user-1', email: 'bisi@lumen.example', fullName: 'Bisi Ade', avatarUrl: null, status: 'active', phone: null, createdAt: new Date().toISOString() }, membership: null } }),
+  );
+}
+
 async function supabaseMode(page: Page, auth: (route: Route, path: string, body: Record<string, unknown>) => Promise<void> | void) {
   await page.route('**/api/config', async (route) => {
     const res = await route.fetch();
@@ -39,14 +48,18 @@ async function supabaseMode(page: Page, auth: (route: Route, path: string, body:
 const fail = (route: Route, status: number, error_code: string, msg: string) => route.fulfill({ status, json: { code: status, error_code, msg } });
 
 test.describe('Email and password', () => {
-  test('sign up asks you to confirm your email, with a resend button', async ({ page }) => {
+  test('sign up emails a 6-digit code; typing it in confirms the address and signs you in', async ({ page }) => {
     const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
     await supabaseMode(page, (route, path, body) => {
       calls.push({ path, body });
       if (path.startsWith('/auth/v1/signup')) return route.fulfill({ json: user(String(body.email)) });
-      if (path.startsWith('/auth/v1/resend')) return route.fulfill({ json: {} });
+      if (path.startsWith('/auth/v1/verify')) {
+        if (body.token !== '482913') return fail(route, 403, 'otp_expired', 'Token has expired or is invalid');
+        return route.fulfill({ json: session(String(body.email)) });
+      }
       return route.fulfill({ status: 404, json: {} });
     });
+    await mockMe(page);
     await page.goto('/login?intent=signup');
     await expect(page.getByTestId('google-signin')).toContainText('Sign up with Google');
     await page.getByTestId('auth-fullname').fill('Bisi Ade');
@@ -58,12 +71,25 @@ test.describe('Email and password', () => {
     await page.getByTestId('auth-password').fill('Lagos-Sunrise-42');
     await expect(page.getByText('Strong')).toBeVisible();
     await page.getByTestId('auth-submit').click();
-    const sent = page.getByTestId('auth-sent');
-    await expect(sent).toContainText('Check your inbox');
-    await expect(sent).toContainText('bisi@lumen.example');
+    const box = page.getByTestId('auth-code');
+    await expect(box).toContainText('Enter your code');
+    await expect(box).toContainText('6-digit code to bisi@lumen.example');
     const signup = calls.find((c) => c.path.startsWith('/auth/v1/signup'))!;
     expect(signup.body).toMatchObject({ email: 'bisi@lumen.example', password: 'Lagos-Sunrise-42', data: { full_name: 'Bisi Ade' } });
-    await expect(page.getByTestId('auth-resend')).toBeDisabled(); // short cooldown so nobody floods their inbox
+    await expect(page.getByTestId('auth-resend')).toBeDisabled(); // Supabase allows one email a minute
+    await expect(page.getByTestId('auth-resend')).toContainText(/Send a new code in \d+s/);
+
+    // The boxes have focus straight away. A wrong code shakes and explains; it is checked as soon as it's complete.
+    await page.keyboard.type('111111');
+    await expect(page.getByTestId('auth-error')).toContainText('wrong or has expired');
+    await expect(page.getByTestId('auth-code-input')).toHaveAttribute('aria-invalid', 'true');
+
+    // Pasting the right code works too.
+    await page.getByTestId('auth-code-input').fill('');
+    await page.getByTestId('auth-code-input').fill('482 913');
+    await page.waitForURL('**/onboarding');
+    const verify = calls.filter((c) => c.path.startsWith('/auth/v1/verify')).at(-1)!;
+    expect(verify.body).toMatchObject({ email: 'bisi@lumen.example', token: '482913' });
   });
 
   test('an address that already has an account is pointed to log in or reset', async ({ page }) => {
@@ -77,22 +103,23 @@ test.describe('Email and password', () => {
     await expect(page.getByTestId('auth-error').getByRole('button', { name: 'Reset your password' })).toBeVisible();
   });
 
-  test('log in: wrong password, unconfirmed email, then success', async ({ page }) => {
+  test('log in: wrong password, unconfirmed email (→ code), then success', async ({ page }) => {
     let attempt = 0;
+    const resends: Array<Record<string, unknown>> = [];
     await supabaseMode(page, (route, path, body) => {
       if (path.startsWith('/auth/v1/token')) {
         attempt++;
         if (attempt === 1) return fail(route, 400, 'invalid_credentials', 'Invalid login credentials');
-        if (attempt === 2) return fail(route, 400, 'email_not_confirmed', 'Email not confirmed');
-        return route.fulfill({ json: { access_token: fakeJwt(String(body.email)), token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'refresh', user: user(String(body.email)) } });
+        if (attempt <= 3) return fail(route, 400, 'email_not_confirmed', 'Email not confirmed');
+        return route.fulfill({ json: session(String(body.email)) });
       }
-      if (path.startsWith('/auth/v1/resend')) return route.fulfill({ json: {} });
+      if (path.startsWith('/auth/v1/resend')) {
+        resends.push(body);
+        return resends.length === 1 ? route.fulfill({ json: {} }) : fail(route, 429, 'over_email_send_rate_limit', 'For security purposes, you can only request this after 37 seconds.');
+      }
       return route.fulfill({ status: 404, json: {} });
     });
-    // The API recognises the signed-in person (no workspace yet → onboarding).
-    await page.route('**/api/me', (route) =>
-      route.fulfill({ json: { profile: { id: 'user-1', email: 'bisi@lumen.example', fullName: 'Bisi Ade', avatarUrl: null, status: 'active', phone: null, createdAt: new Date().toISOString() }, membership: null } }),
-    );
+    await mockMe(page);
 
     await page.goto('/login');
     await expect(page.getByTestId('google-signin')).toContainText('Continue with Google');
@@ -103,8 +130,16 @@ test.describe('Email and password', () => {
 
     await page.getByTestId('auth-submit').click();
     await expect(page.getByTestId('auth-error')).toContainText('Confirm your email first');
-    await page.getByRole('button', { name: 'Send the confirmation email again' }).click();
-    await expect(page.getByTestId('auth-sent')).toContainText('confirmation link');
+    await page.getByRole('button', { name: 'Email me a code' }).click();
+    await expect(page.getByTestId('auth-code')).toContainText('bisi@lumen.example');
+    expect(resends[0]).toMatchObject({ type: 'signup', email: 'bisi@lumen.example' });
+    await page.getByRole('button', { name: 'Use a different email' }).click();
+
+    // Asking again within the minute goes back to the boxes and says why no new email came.
+    await page.getByTestId('auth-submit').click();
+    await page.getByRole('button', { name: 'Email me a code' }).click();
+    await expect(page.getByTestId('auth-code')).toContainText('less than a minute ago');
+    await expect(page.getByTestId('auth-resend')).toContainText(/in (3[0-7])s/);
     await page.getByRole('button', { name: 'Use a different email' }).click();
 
     await page.getByTestId('auth-email').fill('bisi@lumen.example');

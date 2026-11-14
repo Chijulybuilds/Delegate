@@ -40,7 +40,10 @@ interface AuthState {
   signUpWithPassword: (input: { fullName: string; email: string; password: string }) => Promise<{ needsConfirmation: boolean }>;
   signInWithPassword: (input: { email: string; password: string }) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
+  /** Sends the sign-up code (or link, with Supabase's default template) again. */
   resendConfirmation: (email: string) => Promise<void>;
+  /** Checks the code from the sign-up email; on success the person is signed in. */
+  verifyEmailCode: (email: string, code: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   /** Email links that carry ?token_hash=…&type=… (confirm sign-up, reset password). */
   verifyEmailLink: (tokenHash: string, type: string) => Promise<void>;
@@ -184,6 +187,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [supabase],
   );
 
+  const verifyEmailCode = useCallback(
+    async (email: string, code: string) => {
+      const sb = await supabase();
+      let { error } = await sb.auth.verifyOtp({ email, token: code, type: 'email' });
+      // Older Supabase Auth versions only accept sign-up codes as type "signup".
+      if (error && (error.code === 'otp_expired' || /expired|invalid/i.test(error.message))) ({ error } = await sb.auth.verifyOtp({ email, token: code, type: 'signup' }));
+      if (error) throw friendlyAuthError(error, 'code');
+    },
+    [supabase],
+  );
+
   const updatePassword = useCallback(
     async (password: string) => {
       const { error } = await (await supabase()).auth.updateUser({ password });
@@ -234,13 +248,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithPassword,
       sendPasswordReset,
       resendConfirmation,
+      verifyEmailCode,
       updatePassword,
       verifyEmailLink,
       signInDemo,
       signOut,
       refreshMe: () => meQuery.refetch(),
     }),
-    [config, configQuery.isError, configQuery.error, meErrorMessage, sessionChecked, token, meQuery, signInWithGoogle, signUpWithPassword, signInWithPassword, sendPasswordReset, resendConfirmation, updatePassword, verifyEmailLink, signInDemo, signOut],
+    [config, configQuery.isError, configQuery.error, meErrorMessage, sessionChecked, token, meQuery, signInWithGoogle, signUpWithPassword, signInWithPassword, sendPasswordReset, resendConfirmation, verifyEmailCode, updatePassword, verifyEmailLink, signInDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -251,18 +266,29 @@ export class AuthUiError extends Error {
   constructor(
     message: string,
     public readonly code: string,
+    /** Seconds to wait before asking for another email, when Supabase says so. */
+    public readonly retryAfter?: number,
   ) {
     super(message);
   }
 }
 
 /** Supabase Auth errors, in plain words. */
-function friendlyAuthError(error: { message: string; code?: string; status?: number }): AuthUiError {
+function friendlyAuthError(error: { message: string; code?: string; status?: number }, context: 'code' | 'link' = 'link'): AuthUiError {
   const code = error.code ?? '';
   const msg = error.message ?? '';
+  // "For security purposes, you can only request this after 42 seconds."
+  const wait = /after (\d+) seconds?/i.exec(msg);
+  if (wait) return new AuthUiError(`Please wait ${wait[1]} seconds before asking for another email.`, 'wait', Number(wait[1]));
+  if (code === 'over_email_send_rate_limit' || /email rate limit/i.test(msg)) {
+    return new AuthUiError('Too many emails have gone out in the last hour. Try again a little later, or use Google.', 'email_rate_limited', 60);
+  }
+  if (context === 'code' && (code === 'otp_expired' || /expired|invalid/i.test(msg))) {
+    return new AuthUiError('That code is wrong or has expired. Check the newest email, or send a new code.', 'code_invalid');
+  }
   if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return new AuthUiError('Wrong email or password.', 'invalid_credentials');
   if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) {
-    return new AuthUiError('Confirm your email first: open the link we sent you. Can’t find it? Send it again below.', 'email_not_confirmed');
+    return new AuthUiError('Confirm your email first: we’ll email you a code to type in here.', 'email_not_confirmed');
   }
   if (code === 'user_already_exists' || code === 'email_exists' || /already registered/i.test(msg)) {
     return new AuthUiError('An account with this email already exists. Log in instead, or reset your password.', 'user_already_exists');

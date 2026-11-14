@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { MEMBER_ROLES, TASK_PRIORITIES, type TransitionAction } from '@delegate/shared';
 import { badRequest } from '../lib/errors.js';
 import { standupToText, type MetricsService } from '../services/metrics.js';
+import type { AccountService } from '../services/account.js';
 import type { BillingService } from '../services/billing.js';
 import type { Ctx, WorkspaceService } from '../services/workspace.js';
 import type { Store } from '../store/types.js';
@@ -49,6 +50,7 @@ export function workspaceRoutes(deps: {
   workspace: WorkspaceService;
   metrics: MetricsService;
   billing: BillingService;
+  account: AccountService;
 }) {
   const { store, workspace, metrics, billing } = deps;
   const r = Router();
@@ -90,6 +92,11 @@ export function workspaceRoutes(deps: {
     const body = z.object({ role: z.enum(MEMBER_ROLES).optional(), departmentId: id.nullable().optional() }).parse(req.body);
     await workspace.updateMember(ctxOf(req), String(req.params.userId), body);
     res.json({ ok: true });
+  });
+
+  // Someone left the company: take them off the workspace and hand their unfinished work to you.
+  r.delete('/members/:userId', async (req, res) => {
+    res.json(await deps.account.remove(req.user!.id, req.member!.orgId, String(req.params.userId)));
   });
 
   r.post('/departments', async (req, res) => {

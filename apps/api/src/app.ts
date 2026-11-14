@@ -11,6 +11,7 @@ import { Secrets } from './lib/crypto.js';
 import { errorHandler, notFoundHandler } from './lib/errors.js';
 import { adminRoutes, cronRoutes } from './routes/admin.js';
 import { hookRoutes } from './routes/hooks.js';
+import { AccountService } from './services/account.js';
 import { publicRoutes } from './routes/public.js';
 import { oauthRoutes, saasRoutes } from './routes/saas.js';
 import { workspaceRoutes } from './routes/workspace.js';
@@ -40,6 +41,7 @@ export interface AppDeps {
 }
 
 export interface Services {
+  account: AccountService;
   workspace: WorkspaceService;
   billing: BillingService;
   integrations: IntegrationService;
@@ -61,7 +63,8 @@ export function createServices({ config, store, ai = disabledVerifier, mailer = 
   const metrics = new MetricsService(store);
   const automation = new AutomationService(store, workspace, notifier, billing, metrics, mailer);
   const admin = new AdminService(store);
-  return { secrets, billing, notifier, drive, workspace, commands, integrations, metrics, automation, admin, mailer, ai };
+  const account = new AccountService(store, billing);
+  return { secrets, billing, notifier, drive, workspace, commands, integrations, metrics, automation, admin, mailer, ai, account };
 }
 
 export function createApp(deps: AppDeps): Express & { services: Services } {
@@ -143,7 +146,7 @@ export function createApp(deps: AppDeps): Express & { services: Services } {
   });
 
   const verifier = new UserTokenVerifier(config);
-  app.use('/api', publicRoutes({ config, store, verifier, ai: s.ai, workspace: s.workspace, setupIssue }));
+  app.use('/api', publicRoutes({ config, store, verifier, ai: s.ai, workspace: s.workspace, account: s.account, setupIssue }));
   app.use('/api/admin', adminRoutes({ config, admin: s.admin }));
   app.use('/api/cron', cronRoutes({ config, automation: s.automation }));
   app.use('/api', oauthRoutes(s.integrations));
@@ -152,7 +155,7 @@ export function createApp(deps: AppDeps): Express & { services: Services } {
   const member = Router();
   member.use(requireUser(store, verifier), requireMember(store));
   member.use(saasRoutes({ store, billing: s.billing, integrations: s.integrations, automation: s.automation, workspace: s.workspace, drive: s.drive }));
-  member.use(workspaceRoutes({ store, workspace: s.workspace, metrics: s.metrics, billing: s.billing }));
+  member.use(workspaceRoutes({ store, workspace: s.workspace, metrics: s.metrics, billing: s.billing, account: s.account }));
   app.use('/api', member);
   app.use('/api', notFoundHandler);
 

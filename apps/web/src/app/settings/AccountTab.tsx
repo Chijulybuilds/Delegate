@@ -6,6 +6,7 @@ import { Avatar, Button, Card } from '../../components/ui';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useIntegrations, type WorkspaceData } from '../data';
+import { DangerZone } from './LeaveOrDelete';
 
 export function AccountTab({ ws }: { ws: WorkspaceData }) {
   const { me, signOut, config } = useAuth();
@@ -48,7 +49,7 @@ export function AccountTab({ ws }: { ws: WorkspaceData }) {
           </div>
         </div>
         <p className="mt-5 text-sm text-mute">
-          Signed in with {config?.authMode === 'supabase' ? 'Google' : 'a demo session'} · {ws.org.name}
+          {config?.authMode === 'demo' ? 'Demo session' : 'Signed in'} · {ws.org.name}
         </p>
         <Button variant="outline" className="mt-5" onClick={() => signOut()}>
           Sign out
@@ -94,6 +95,8 @@ export function AccountTab({ ws }: { ws: WorkspaceData }) {
           </>
         )}
       </Card>
+
+      <DangerZone members={ws.members} orgName={ws.org.name} />
     </div>
   );
 }

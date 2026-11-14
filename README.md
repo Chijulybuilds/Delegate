@@ -129,6 +129,6 @@ It needs Python 3.9+ with `numpy` and `pillow`.
 ## Status
 
 - ✅ 45 API tests and 42 Playwright end-to-end tests pass against the production build
-- ✅ Both Supabase migrations checked on PostgreSQL 16: they re-run cleanly, users only see their own workspace, browsers can't write, and the activity log can't be edited or deleted
+- ✅ The Supabase migrations checked on PostgreSQL 16: they re-run cleanly, users only see their own workspace, browsers can't write or call admin functions, and the activity log can't be edited or deleted (the one exception: a deleted person's name is replaced with “Deleted user”)
 - ✅ Vercel entry verified locally: health, cron auth, and webhook signatures with `NODEJS_HELPERS=0`; a loud failure without it
 - ⏳ Live providers need your keys: follow SETUP.md → INTEGRATIONS.md → DEPLOYMENT.md

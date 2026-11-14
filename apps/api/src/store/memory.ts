@@ -18,6 +18,7 @@ import {
 } from '@delegate/shared';
 import { HttpError, notFound } from '../lib/errors.js';
 import { uuid } from '../lib/ids.js';
+import { erasedProfile } from './types.js';
 import type { IntegrationRecord, MembershipRecord, NewTask, Store, TaskPatch } from './types.js';
 
 const now = () => new Date().toISOString();
@@ -163,6 +164,46 @@ export class MemoryStore implements Store {
     if (this.memberships.some((m) => m.userId === input.userId)) return;
     this.memberships.push({ ...input, joinedAt: now() });
   }
+  async removeMember(orgId: string, userId: string) {
+    this.memberships = this.memberships.filter((m) => !(m.orgId === orgId && m.userId === userId));
+  }
+
+  async deleteOrg(orgId: string) {
+    const taskIds = new Set([...this.tasks.values()].filter((t) => t.orgId === orgId).map((t) => t.id));
+    this.orgs.delete(orgId);
+    this.memberships = this.memberships.filter((m) => m.orgId !== orgId);
+    for (const [id, d] of this.departments) if (d.orgId === orgId) this.departments.delete(id);
+    for (const id of taskIds) this.tasks.delete(id);
+    for (const [id, p] of this.proofs) if (taskIds.has(p.taskId)) this.proofs.delete(id);
+    for (const [id, c] of this.comments) if (taskIds.has(c.taskId)) this.comments.delete(id);
+    this.events = this.events.filter((e) => e.orgId !== orgId);
+    for (const key of [...this.files.keys()]) if (key.startsWith(`${orgId}/`)) this.files.delete(key);
+    this.subscriptions.delete(orgId);
+    for (const [id, i] of this.integrations) if (i.orgId === orgId) this.integrations.delete(id);
+    this.outbound = this.outbound.filter((o) => o.orgId !== orgId);
+    this.linkCodes = this.linkCodes.filter((l) => l.orgId !== orgId);
+    this.notifications = this.notifications.filter((n) => n.orgId !== orgId);
+    for (const [id, pb] of this.playbooks) if (pb.orgId === orgId) this.playbooks.delete(id);
+  }
+
+  async eraseUser(userId: string) {
+    const p = this.profiles.get(userId);
+    if (p) this.profiles.set(userId, { ...p, ...erasedProfile(userId) });
+    this.memberships = this.memberships.filter((m) => m.userId !== userId);
+    this.notifications = this.notifications.filter((n) => n.userId !== userId);
+    this.linkCodes = this.linkCodes.filter((l) => l.userId !== userId);
+    // Same rules as erase_person_from_history() in supabase/migrations/20261114000000_accounts.sql.
+    const gone = 'Deleted user';
+    this.events = this.events.map((e) => {
+      const m = e.meta as Record<string, unknown> & { reassigned?: { from?: string; to?: string } };
+      const meta = { ...m };
+      if ('name' in m && (m.userId === userId || m.reassigned?.from === userId || (e.actorId === userId && e.type === 'member.joined'))) meta.name = gone;
+      if ('toName' in m && (m.handedTo === userId || m.reassigned?.to === userId)) meta.toName = gone;
+      if ('actorName' in m && e.actorId === userId) meta.actorName = gone;
+      return { ...e, meta };
+    });
+  }
+
   async updateMember(orgId: string, userId: string, patch: Partial<Pick<MembershipRecord, 'role' | 'departmentId'>>) {
     const m = this.memberships.find((x) => x.orgId === orgId && x.userId === userId);
     if (!m) throw notFound('Member not found');

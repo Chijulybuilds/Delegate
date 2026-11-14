@@ -556,7 +556,9 @@ const SOURCE_NAMES: Record<string, string> = { github: 'GitHub', slack: 'Slack',
 
 export function describeEvent(e: LedgerEvent, ws: WorkspaceData, withTitle = false): string {
   const source = typeof e.meta.source === 'string' ? SOURCE_NAMES[e.meta.source] : undefined;
-  const who = e.actorId ? memberName(ws.members, e.actorId) : (source ?? 'Automation');
+  // People who have left aren't in the member list any more: their name travels with the event.
+  const known = e.actorId ? ws.members.some((m) => m.userId === e.actorId) : false;
+  const who = e.actorId ? (known || typeof e.meta.actorName !== 'string' ? memberName(ws.members, e.actorId) : e.meta.actorName) : (source ?? 'Automation');
   const via = e.actorId && source && source !== 'App' ? ` via ${source}` : '';
   const title = withTitle && typeof e.meta.title === 'string' ? ` “${e.meta.title}”` : '';
   switch (e.type) {
@@ -577,6 +579,8 @@ export function describeEvent(e: LedgerEvent, ws: WorkspaceData, withTitle = fal
     case 'task.commented':
       return `${who} replied${title}`;
     case 'task.updated':
+      if (e.meta.reason === 'member_left') return `${who} left — handed${title || ' a task'} to ${e.meta.toName}`;
+      if (e.meta.reason === 'member_removed') return `${who} took over${title || ' a task'} from ${e.meta.name}, who was removed`;
       return `${who} edited${title} (${((e.meta.fields as string[]) ?? []).join(', ')})`;
     case 'task.escalated':
       return `Escalated${title} to ${e.meta.level === 2 ? 'the owner' : 'managers'} — blocked ${e.meta.hours}h`;
@@ -584,8 +588,12 @@ export function describeEvent(e: LedgerEvent, ws: WorkspaceData, withTitle = fal
       return `${who} attached proof${title}`;
     case 'member.joined':
       return `${who} joined the workspace`;
+    case 'member.left': {
+      const handed = Number(e.meta.tasks) ? ` — ${e.meta.tasks} unfinished task(s) handed to ${e.meta.toName}` : '';
+      return e.meta.reason === 'member_removed' ? `${who} removed ${e.meta.name} from the workspace${handed}` : `${who} left the workspace${handed}`;
+    }
     case 'member.role_changed':
-      return `${who} made ${e.meta.name} a ${e.meta.to}`;
+      return e.meta.reason === 'ownership_transferred' ? `${who} handed ownership to ${e.meta.name}` : `${who} made ${e.meta.name} a ${e.meta.to}`;
     case 'org.created':
       return `${who} created the workspace`;
     case 'playbook.ran':

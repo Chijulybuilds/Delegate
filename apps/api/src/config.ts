@@ -57,6 +57,9 @@ const schema = z.object({
   TEAM_PRICE_USD: z.coerce.number().default(8),
   TEAM_PRICE_NGN: z.coerce.number().optional(),
 
+  // Sign-up code length: keep equal to Supabase → Authentication → Sign In / Providers → Email → Email OTP Length.
+  EMAIL_OTP_LENGTH: z.coerce.number().int().min(6).max(10).default(6),
+
   // Slack app (OAuth + slash command + message shortcut)
   SLACK_CLIENT_ID: z.string().optional(),
   SLACK_CLIENT_SECRET: z.string().optional(),
@@ -89,6 +92,8 @@ export type Env = z.infer<typeof schema>;
 
 export interface AppConfig {
   env: Env['NODE_ENV'];
+  /** Digits in the sign-up code Supabase emails (Email OTP Length). */
+  emailOtpLength: number;
   isProduction: boolean;
   port: number | null;
   authMode: 'supabase' | 'demo';
@@ -146,7 +151,10 @@ function deriveKey(raw: string): Buffer {
 export const DEV_ADMIN_PASSWORD = 'delegate-admin';
 
 export function loadConfig(overrides: Partial<Record<keyof Env, string>> = {}): AppConfig {
-  const parsed = schema.safeParse({ ...process.env, ...overrides });
+  // Values pasted into a dashboard often carry a stray newline or space (e.g. "\n1039…apps.googleusercontent.com"),
+  // which silently breaks OAuth client IDs and keys. Trim every value before validating.
+  const raw = Object.fromEntries(Object.entries({ ...process.env, ...overrides }).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
+  const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
@@ -230,6 +238,7 @@ export function loadConfig(overrides: Partial<Record<keyof Env, string>> = {}): 
       : null,
     paystack: e.PAYSTACK_SECRET_KEY && e.PAYSTACK_PLAN_TEAM ? { secretKey: e.PAYSTACK_SECRET_KEY, planTeam: e.PAYSTACK_PLAN_TEAM } : null,
     prices: { teamUsd: e.TEAM_PRICE_USD, teamNgn: e.TEAM_PRICE_NGN ?? null },
+    emailOtpLength: e.EMAIL_OTP_LENGTH,
     slack:
       e.SLACK_CLIENT_ID && e.SLACK_CLIENT_SECRET && e.SLACK_SIGNING_SECRET
         ? { clientId: e.SLACK_CLIENT_ID, clientSecret: e.SLACK_CLIENT_SECRET, signingSecret: e.SLACK_SIGNING_SECRET }

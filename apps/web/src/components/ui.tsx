@@ -289,7 +289,7 @@ export function FullPageSpinner() {
   );
 }
 
-export function Card({ children, className, ...rest }: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement> & { 'data-testid'?: string }) {
+export function Card({ children, className, ...rest }: { children: ReactNode; className?: string; ref?: React.Ref<HTMLDivElement> } & React.HTMLAttributes<HTMLDivElement> & { 'data-testid'?: string }) {
   return (
     <div className={cx('rounded-2xl border border-line bg-paper shadow-[var(--shadow-card)]', className)} {...rest}>
       {children}

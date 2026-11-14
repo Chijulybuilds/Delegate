@@ -18,6 +18,7 @@ import {
   type TaskStatus,
 } from '@delegate/shared';
 import { HttpError, notFound } from '../lib/errors.js';
+import { erasedProfile } from './types.js';
 import type { IntegrationRecord, MembershipRecord, NewTask, Store, TaskPatch } from './types.js';
 
 type Row = Record<string, unknown>;
@@ -71,16 +72,23 @@ const toTask = (r: Row) => {
 const toEvent = (r: Row): LedgerEvent => ({ ...camel<LedgerEvent>(r), id: String(r.id) });
 
 /** Production store backed by Supabase Postgres + Storage (service-role client, server-side only). */
+
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 export class SupabaseStore implements Store {
   readonly kind = 'supabase' as const;
   private db: SupabaseClient;
+
+  /** A client with only the public (publishable) key: used to check what browsers are allowed to do. */
+  private publicDb: SupabaseClient | null;
 
   constructor(
     url: string,
     serviceRoleKey: string,
     private bucket: string,
+    anonKey?: string,
   ) {
     this.db = createClient(url, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    this.publicDb = anonKey ? createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
   }
 
   // Schema -----------------------------------------------------------------
@@ -96,7 +104,7 @@ export class SupabaseStore implements Store {
     };
     try {
       if (await missing('profiles', 'id')) {
-        return 'The Supabase database is empty: run both files in supabase/migrations (Supabase → SQL Editor), oldest first.';
+        return 'The Supabase database is empty: run every file in supabase/migrations (Supabase → SQL Editor), oldest first.';
       }
       const saas = await Promise.all([
         missing('profiles', 'id, phone'),
@@ -108,6 +116,17 @@ export class SupabaseStore implements Store {
       ]);
       if (saas.some(Boolean)) {
         return 'The Supabase database is missing the latest migration: open Supabase → SQL Editor and run supabase/migrations/20261113000000_saas.sql.';
+      }
+      const ACCOUNTS = 'supabase/migrations/20261114000000_accounts.sql';
+      // Needed for "Delete account". Probing with a nil id changes nothing.
+      const erase = await this.db.rpc('erase_person_from_history', { p_user: NIL_UUID });
+      if (erase.error && (['PGRST202', '42883'].includes(erase.error.code ?? '') || /could not find the function|does not exist/i.test(erase.error.message))) {
+        return `The Supabase database is missing the latest migration: open Supabase → SQL Editor and run ${ACCOUNTS}.`;
+      }
+      // Security: browsers must not be able to purge a workspace. Probing with a nil id deletes nothing.
+      if (this.publicDb) {
+        const { error } = await this.publicDb.rpc('purge_organization', { p_org: NIL_UUID });
+        if (!error) return `Security update needed: open Supabase → SQL Editor and run ${ACCOUNTS} (it stops browsers from calling the workspace-delete function).`;
       }
       return null;
     } catch (error) {
@@ -204,6 +223,47 @@ export class SupabaseStore implements Store {
   async addMember(input: Omit<MembershipRecord, 'joinedAt'>) {
     check(await this.db.from('memberships').upsert(snake(input), { onConflict: 'org_id,user_id', ignoreDuplicates: true }), 'adding member');
   }
+  async removeMember(orgId: string, userId: string) {
+    check(await this.db.from('memberships').delete().eq('org_id', orgId).eq('user_id', userId), 'removing member');
+  }
+
+  async deleteOrg(orgId: string) {
+    // Files first (best effort): proofs live under "<orgId>/<taskId>/<file>".
+    try {
+      const bucket = this.db.storage.from(this.bucket);
+      const { data: folders } = await bucket.list(orgId, { limit: 1000 });
+      const paths: string[] = [];
+      for (const f of folders ?? []) {
+        if (f.id) paths.push(`${orgId}/${f.name}`);
+        else for (const file of (await bucket.list(`${orgId}/${f.name}`, { limit: 1000 })).data ?? []) paths.push(`${orgId}/${f.name}/${file.name}`);
+      }
+      for (let i = 0; i < paths.length; i += 100) await bucket.remove(paths.slice(i, i + 100));
+    } catch (error) {
+      console.error('[supabase] could not remove workspace files', error);
+    }
+    // purge_organization lifts the ledger's append-only guard for this one deletion.
+    const { error } = await this.db.rpc('purge_organization', { p_org: orgId });
+    if (error) {
+      console.error('[supabase] purge_organization failed', error);
+      throw new HttpError(500, 'Could not delete the workspace', 'db_error');
+    }
+  }
+
+  async eraseUser(userId: string) {
+    check(await this.db.from('memberships').delete().eq('user_id', userId), 'removing memberships');
+    check(await this.db.from('notifications').delete().eq('user_id', userId), 'removing notifications');
+    check(await this.db.from('link_codes').delete().eq('user_id', userId), 'removing WhatsApp link codes');
+    check(await this.db.rpc('erase_person_from_history', { p_user: userId }), 'erasing their name from the activity history');
+    check(await this.db.from('profiles').update(snake(erasedProfile(userId))).eq('id', userId), 'erasing profile');
+    // Soft delete: the sign-in is gone (email and Google link removed), while the profile row stays so
+    // tasks and the activity history keep pointing at "Deleted user".
+    const { error } = await this.db.auth.admin.deleteUser(userId, true);
+    if (error && !/not.?found/i.test(error.message)) {
+      console.error('[supabase] could not delete auth user', error);
+      throw new HttpError(500, 'Could not delete the sign-in for this account', 'auth_error');
+    }
+  }
+
   async updateMember(orgId: string, userId: string, patch: Partial<Pick<MembershipRecord, 'role' | 'departmentId'>>) {
     check(await this.db.from('memberships').update(snake(patch)).eq('org_id', orgId).eq('user_id', userId), 'updating member');
   }

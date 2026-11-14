@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { isManagerRole, type MemberRole } from '@delegate/shared';
-import { Copy, Plus, RefreshCw } from 'lucide-react';
+import { isManagerRole, type Member, type MemberRole } from '@delegate/shared';
+import { Copy, Plus, RefreshCw, UserMinus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
-import { Avatar, Button, Card, Input, Select, Spinner } from '../components/ui';
+import { Avatar, Button, Card, Input, Modal, Select, Spinner } from '../components/ui';
 import { api } from '../lib/api';
 import { timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
@@ -19,6 +19,8 @@ export default function TeamPage() {
   const toast = useToast();
   const [deptName, setDeptName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState<Member | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   if (isLoading || !ws) return <Spinner className="m-8" />;
   const isManager = isManagerRole(ws.me.role);
@@ -32,6 +34,23 @@ export default function TeamPage() {
       toast.success('Team updated');
     } catch (e) {
       toast.error(e);
+    }
+  };
+
+  // Owners can remove anyone but themselves; managers can remove staff.
+  const canRemove = (m: Member) => isManager && m.userId !== ws.me.userId && m.role !== 'owner' && (m.role !== 'manager' || isOwner);
+  const remove = async () => {
+    if (!removing) return;
+    setRemoveBusy(true);
+    try {
+      const r = await api.del<{ tasksHandedOver: number }>(`/members/${removing.userId}`);
+      await qc.invalidateQueries();
+      toast.success(r.tasksHandedOver ? `${removing.fullName} removed · ${r.tasksHandedOver} task(s) now assigned to you` : `${removing.fullName} removed from the workspace`);
+      setRemoving(null);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setRemoveBusy(false);
     }
   };
 
@@ -63,6 +82,21 @@ export default function TeamPage() {
   return (
     <div>
       <PageHeader title="Team" subtitle={`${ws.members.length} people in ${ws.org.name}`} />
+      <Modal open={!!removing} onClose={() => !removeBusy && setRemoving(null)} title={`Remove ${removing?.fullName ?? ''}?`} description="For when someone has left the company or the team.">
+        <ul className="space-y-2 rounded-2xl bg-milk p-4 text-sm text-ink-2">
+          <li>• They lose access to {ws.org.name} straight away.</li>
+          <li>• Their unfinished tasks and playbook duties are assigned to you, so you can pass them on.</li>
+          <li>• Their past work and comments stay in the history. They keep their own sign-in and can be invited back.</li>
+        </ul>
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="ghost" onClick={() => setRemoving(null)} disabled={removeBusy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={remove} loading={removeBusy} data-testid="confirm-remove-member">
+            Remove from workspace
+          </Button>
+        </div>
+      </Modal>
       <div className="grid gap-4 px-4 pb-12 sm:px-8 xl:grid-cols-[1fr_360px]">
         <Card className="overflow-hidden">
           <ul className="divide-y divide-line" data-testid="member-list">
@@ -101,6 +135,21 @@ export default function TeamPage() {
                 ) : (
                   <span className="rounded-full border border-line px-3 py-1 text-[13px] text-ink-2">{roleLabel[m.role]}</span>
                 )}
+                {isManager && (
+                  <span className="grid size-9 place-items-center">
+                    {canRemove(m) && (
+                      <button
+                        onClick={() => setRemoving(m)}
+                        className="grid size-9 place-items-center rounded-full text-faint transition-colors hover:bg-s-open-soft hover:text-s-open-ink"
+                        aria-label={`Remove ${m.fullName} from the workspace`}
+                        title="Remove from workspace"
+                        data-testid={`remove-member-${m.userId}`}
+                      >
+                        <UserMinus className="size-4" />
+                      </button>
+                    )}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -109,7 +158,7 @@ export default function TeamPage() {
         <div className="space-y-4">
           <Card className="p-5">
             <h2 className="text-[15px] font-medium">Invite your team</h2>
-            <p className="mt-1 text-sm text-mute">Teammates sign in with Google, then enter this code to join as staff.</p>
+            <p className="mt-1 text-sm text-mute">Teammates sign in (Google or email), then enter this code to join as staff.</p>
             <div className="mt-4 flex items-center gap-2">
               <code className="flex-1 rounded-xl border border-line bg-milk px-3.5 py-2.5 font-mono text-[15px] tracking-wider" data-testid="invite-code">
                 {ws.org.inviteCode}
