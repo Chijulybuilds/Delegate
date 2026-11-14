@@ -7,6 +7,7 @@ import { useThemeScope } from './lib/theme';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AppShell = lazy(() => import('./app/AppShell'));
@@ -35,7 +36,7 @@ function RequireWorkspace({ children }: { children: ReactNode }) {
  */
 function Home() {
   const { search, hash } = useLocation();
-  const returning = /[?&](code|error_description)=/.test(search) || /access_token=|error_description=/.test(hash);
+  const returning = /[?&](code|token_hash|error_description)=/.test(search) || /access_token=|error_description=/.test(hash);
   if (returning) return <Navigate to={`/auth/callback${search}${hash}`} replace />;
   return <LandingPage />;
 }
@@ -49,6 +50,7 @@ export function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/auth/reset" element={<ResetPassword />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route
           path="/app"

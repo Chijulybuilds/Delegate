@@ -36,6 +36,14 @@ interface AuthState {
   me: MeResponse | null;
   meLoading: boolean;
   signInWithGoogle: () => Promise<void>;
+  /** Email + password (Supabase). `needsConfirmation` = we emailed a link to confirm the address first. */
+  signUpWithPassword: (input: { fullName: string; email: string; password: string }) => Promise<{ needsConfirmation: boolean }>;
+  signInWithPassword: (input: { email: string; password: string }) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  resendConfirmation: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
+  /** Email links that carry ?token_hash=…&type=… (confirm sign-up, reset password). */
+  verifyEmailLink: (tokenHash: string, type: string) => Promise<void>;
   signInDemo: (input: { personaId: string } | { email: string; fullName: string }) => Promise<void>;
   signOut: () => Promise<void>;
   refreshMe: () => Promise<unknown>;
@@ -129,6 +137,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, [config]);
 
+  const supabase = useCallback(async () => {
+    if (!config?.supabaseUrl || !config.supabaseAnonKey) throw new Error('Email sign-in needs Supabase to be connected.');
+    return getSupabase(config.supabaseUrl, config.supabaseAnonKey);
+  }, [config]);
+
+  const signUpWithPassword = useCallback(
+    async ({ fullName, email, password }: { fullName: string; email: string; password: string }) => {
+      const sb = await supabase();
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName.trim() }, emailRedirectTo: `${window.location.origin}/auth/callback` },
+      });
+      if (error) throw friendlyAuthError(error);
+      // Supabase doesn't reveal existing accounts: a confirmed address comes back with no identities.
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        throw new AuthUiError('An account with this email already exists. Log in instead, or reset your password.', 'user_already_exists');
+      }
+      return { needsConfirmation: !data.session };
+    },
+    [supabase],
+  );
+
+  const signInWithPassword = useCallback(
+    async ({ email, password }: { email: string; password: string }) => {
+      const { error } = await (await supabase()).auth.signInWithPassword({ email, password });
+      if (error) throw friendlyAuthError(error);
+    },
+    [supabase],
+  );
+
+  const sendPasswordReset = useCallback(
+    async (email: string) => {
+      const { error } = await (await supabase()).auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/reset` });
+      if (error) throw friendlyAuthError(error);
+    },
+    [supabase],
+  );
+
+  const resendConfirmation = useCallback(
+    async (email: string) => {
+      const { error } = await (await supabase()).auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${window.location.origin}/auth/callback` } });
+      if (error) throw friendlyAuthError(error);
+    },
+    [supabase],
+  );
+
+  const updatePassword = useCallback(
+    async (password: string) => {
+      const { error } = await (await supabase()).auth.updateUser({ password });
+      if (error) throw friendlyAuthError(error);
+    },
+    [supabase],
+  );
+
+  const verifyEmailLink = useCallback(
+    async (tokenHash: string, type: string) => {
+      const { error } = await (await supabase()).auth.verifyOtp({ token_hash: tokenHash, type: type as 'email' });
+      if (error) throw friendlyAuthError(error);
+    },
+    [supabase],
+  );
+
   const signInDemo = useCallback(
     async (input: { personaId: string } | { email: string; fullName: string }) => {
       const { token: t } = await api.post<{ token: string }>('/auth/demo', input, null);
@@ -159,14 +230,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       me: meQuery.data ?? null,
       meLoading: meQuery.isLoading,
       signInWithGoogle,
+      signUpWithPassword,
+      signInWithPassword,
+      sendPasswordReset,
+      resendConfirmation,
+      updatePassword,
+      verifyEmailLink,
       signInDemo,
       signOut,
       refreshMe: () => meQuery.refetch(),
     }),
-    [config, configQuery.isError, configQuery.error, meErrorMessage, sessionChecked, token, meQuery, signInWithGoogle, signInDemo, signOut],
+    [config, configQuery.isError, configQuery.error, meErrorMessage, sessionChecked, token, meQuery, signInWithGoogle, signUpWithPassword, signInWithPassword, sendPasswordReset, resendConfirmation, updatePassword, verifyEmailLink, signInDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/** A sign-in error with a stable code the UI can react to (e.g. offer "resend email"). */
+export class AuthUiError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Supabase Auth errors, in plain words. */
+function friendlyAuthError(error: { message: string; code?: string; status?: number }): AuthUiError {
+  const code = error.code ?? '';
+  const msg = error.message ?? '';
+  if (code === 'invalid_credentials' || /invalid login credentials/i.test(msg)) return new AuthUiError('Wrong email or password.', 'invalid_credentials');
+  if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) {
+    return new AuthUiError('Confirm your email first: open the link we sent you. Can’t find it? Send it again below.', 'email_not_confirmed');
+  }
+  if (code === 'user_already_exists' || code === 'email_exists' || /already registered/i.test(msg)) {
+    return new AuthUiError('An account with this email already exists. Log in instead, or reset your password.', 'user_already_exists');
+  }
+  if (code === 'weak_password') return new AuthUiError(`Choose a stronger password. ${msg}`.trim(), code);
+  if (code === 'same_password') return new AuthUiError('That’s your current password. Choose a new one.', code);
+  if (code.startsWith('over_') || /rate limit/i.test(msg)) {
+    return new AuthUiError('Too many attempts just now. Wait a minute and try again.', 'rate_limited');
+  }
+  if (code === 'email_provider_disabled' || code === 'signup_disabled' || /signups not allowed|email logins are disabled/i.test(msg)) {
+    return new AuthUiError('Email sign-up is switched off for Delegate right now. Use Continue with Google.', code || 'email_disabled');
+  }
+  if (code === 'otp_expired' || /expired|invalid.*(token|link)/i.test(msg)) {
+    return new AuthUiError('This link has expired or was already used. Request a new one.', 'link_expired');
+  }
+  if (code === 'email_address_invalid' || /invalid.*email|unable to validate email/i.test(msg)) return new AuthUiError('That email address doesn’t look right.', 'email_invalid');
+  return new AuthUiError(msg || 'Something went wrong. Please try again.', code || 'auth_error');
 }
 
 /** Turns a failed API call into something a person can act on. */

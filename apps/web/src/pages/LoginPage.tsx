@@ -9,6 +9,7 @@ import { Avatar, Button, cx, EASE, Field, FullPageSpinner, Input, Logo } from '.
 import { PhotoPhone } from '../landing/PhotoPhone';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { EmailAuth } from './EmailAuth';
 
 interface Persona {
   id: string;
@@ -112,7 +113,9 @@ export default function LoginPage() {
             )}
           </h1>
           <p className="mt-3 text-[15px] text-mute">
-            {signup ? 'Sign up with your work Google account. Create a workspace or join your team with an invite code.' : 'Sign in with your work Google account to open your board.'}
+            {signup
+              ? 'Create your account with Google or your work email. Then start a workspace, or join your team with an invite code.'
+              : 'Log in with Google, or with your email and password.'}
           </p>
 
           {/* Anything that would make sign-in fail is explained here, before anyone clicks. */}
@@ -144,10 +147,14 @@ export default function LoginPage() {
 
           {config?.authMode === 'supabase' && (
             <div className="mt-8">
-              <Button variant="soft" size="lg" className="w-full" onClick={google} loading={busy === 'google'}>
-                <GoogleIcon /> Continue with Google
+              <Button variant="soft" size="lg" className="w-full" onClick={google} loading={busy === 'google'} data-testid="google-signin">
+                <GoogleIcon /> {signup ? 'Sign up with Google' : 'Continue with Google'}
               </Button>
-              <p className="mt-4 text-center text-xs text-faint">By continuing you agree to the Terms and Privacy Policy.</p>
+              <div className="my-6 flex items-center gap-3 text-xs text-faint">
+                <span className="h-px flex-1 bg-line" /> or with your email <span className="h-px flex-1 bg-line" />
+              </div>
+              <EmailAuth signup={signup} />
+              <p className="mt-5 text-center text-xs text-faint">By continuing you agree to the Terms and Privacy Policy.</p>
             </div>
           )}
 
