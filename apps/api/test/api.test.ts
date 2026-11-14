@@ -303,3 +303,12 @@ describe('sign-in never fails silently', () => {
     expect(describeStartupError(new Error('APP_ENCRYPTION_KEY is required in production'), 'vercel')).toMatch(/Vercel → Project → Settings → Environment Variables/);
   });
 });
+
+describe('Supabase URL', () => {
+  it('keeps only the project address, so Google sign-in never goes to a /rest/v1 path', () => {
+    for (const pasted of ['https://abcd.supabase.co', 'https://abcd.supabase.co/', 'https://abcd.supabase.co/rest/v1/', 'https://abcd.supabase.co/auth/v1']) {
+      const c = loadConfig({ NODE_ENV: 'test', SUPABASE_URL: pasted, SUPABASE_ANON_KEY: 'sb_publishable_x', SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_x' });
+      expect(c.supabase?.url).toBe('https://abcd.supabase.co');
+    }
+  });
+});

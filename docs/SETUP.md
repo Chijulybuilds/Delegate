@@ -199,6 +199,7 @@ Delegate tells you why on the sign-in page itself, in a red box. The usual cause
 | *…the database is empty* | Run both files in `supabase/migrations`, oldest first. |
 | *…is required in production* | Your `.env` says `NODE_ENV=production`. Locally, use `NODE_ENV=development`. On Vercel, add the named variable and redeploy. |
 | *The server didn't accept your Google session* | `SUPABASE_URL` / keys on the server belong to a different Supabase project than the one you signed in to. |
+| Clicking **Continue with Google** shows `{"message":"No API key found in request"}` | That page is Supabase, not Google. Either `SUPABASE_URL` has an extra path (it must be exactly `https://YOUR-REF.supabase.co`; the app now trims it, so redeploy), or Supabase → Authentication → URL Configuration → **Site URL** points at a `supabase.co` address. It must be your app: `http://localhost:3000` or `https://YOUR-APP.vercel.app`. |
 | Google sends you back to the home page | Add `http://localhost:3000/auth/callback` (and your live domain's) under Supabase → Authentication → URL Configuration → Redirect URLs. Delegate finishes the sign-in anyway, but Supabase should allow the callback. |
 
 `GET /api/health` shows the same information: `{"ok":false,"setupIssue":"…"}` when something needs fixing.
