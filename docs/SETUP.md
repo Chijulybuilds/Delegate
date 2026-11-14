@@ -74,9 +74,10 @@ Demo data lives in memory and resets when the API restarts.
 ## 2. Supabase (database, sign-in, storage)
 
 1. Go to [supabase.com](https://supabase.com) → **New project**. Pick the region closest to your users (e.g. *West EU (Ireland)* or *Frankfurt* for Nigeria). Save the database password somewhere safe.
-2. Open **SQL Editor → New query** and run the two migrations **in order**. Paste each file and press **Run**:
+2. Open **SQL Editor → New query** and run the three migrations **in order**. Paste each file and press **Run**:
    1. [`supabase/migrations/20261112000000_init.sql`](../supabase/migrations/20261112000000_init.sql): workspaces, tasks, the append-only ledger, Row Level Security, the `proofs` storage bucket, and Realtime.
    2. [`supabase/migrations/20261113000000_saas.sql`](../supabase/migrations/20261113000000_saas.sql): task numbers (`DLG-12`), subscriptions, integrations, notifications, playbooks, escalation fields and the webhook de-duplication table.
+   3. [`supabase/migrations/20261114000000_accounts.sql`](../supabase/migrations/20261114000000_accounts.sql): **Leave workspace / Delete account** (erases a deleted person's name from the history) and a security fix that stops browsers from calling the workspace-delete function.
 
    *(With the Supabase CLI instead: `supabase link --project-ref <ref>` then `supabase db push`.)*
 3. Open **Project Settings → API Keys** and copy:
@@ -249,8 +250,9 @@ Delegate tells you why on the sign-in page itself, in a red box. The usual cause
 |---|---|
 | *…the package "…" isn't installed* | You pulled new code. Run `npm install`, then `npm run dev` again. (`npm run dev` also checks this before starting.) |
 | *The Delegate API isn't responding* | The API part of `npm run dev` stopped. Look in that terminal for a red `[api]` line. After pulling new code, `npm install` is usually the fix. |
-| *…missing the latest migration* | In Supabase → SQL Editor, run `supabase/migrations/20261113000000_saas.sql`. Refresh the page; no restart needed. |
-| *…the database is empty* | Run both files in `supabase/migrations`, oldest first. |
+| *…missing the latest migration* | In Supabase → SQL Editor, run the file the message names (`20261113000000_saas.sql` and/or `20261114000000_accounts.sql`, oldest first). Refresh the page; no restart needed. |
+| *Security update needed* | In Supabase → SQL Editor, run `supabase/migrations/20261114000000_accounts.sql`. Refresh the page. |
+| *…the database is empty* | Run every file in `supabase/migrations`, oldest first. |
 | *…is required in production* | Your `.env` says `NODE_ENV=production`. Locally, use `NODE_ENV=development`. On Vercel, add the named variable and redeploy. |
 | *The server didn't accept your Google session* | `SUPABASE_URL` / keys on the server belong to a different Supabase project than the one you signed in to. |
 | Clicking **Continue with Google** shows `{"message":"No API key found in request"}` | That page is Supabase, not Google. Either `SUPABASE_URL` has an extra path (it must be exactly `https://YOUR-REF.supabase.co`; the app now trims it, so redeploy), or Supabase → Authentication → URL Configuration → **Site URL** points at a `supabase.co` address. It must be your app: `http://localhost:3000` or `https://YOUR-APP.vercel.app`. |

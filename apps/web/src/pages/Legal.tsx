@@ -130,8 +130,10 @@ export function PrivacyPage() {
       <section>
         <h2>6. How long we keep it</h2>
         <p>
-          We keep your data while your account or workspace is active. When a workspace owner asks us to delete a workspace, or you ask us to delete your account, we delete the data within 30
-          days. The exception is records we must keep for legal or billing reasons. Backups roll over within a further 30 days.
+          We keep your data while your account or workspace is active. You can delete your account yourself at any time in Settings → Account → Delete account. That immediately erases
+          your name, email, photo, WhatsApp number and sign-in. Work you did for a company stays in its workspace, shown as “Deleted user”, because that record belongs to the company. If
+          you’re the last person in a workspace, deleting your account deletes the workspace and everything in it. If you ask us to delete data instead, we do it within 30 days. The
+          exception is records we must keep for legal or billing reasons. Backups roll over within a further 30 days.
         </p>
       </section>
       <section>

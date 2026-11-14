@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router';
 import { useToast } from '../components/Toast';
 import { Button, Card, EASE, Field, FullPageSpinner, Input, Logo } from '../components/ui';
+import { LeaveOrDeleteModal } from '../app/settings/LeaveOrDelete';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -16,6 +17,7 @@ export default function Onboarding() {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     document.title = 'Set up your workspace · Delegate';
@@ -61,10 +63,16 @@ export default function Onboarding() {
     <div className="min-h-dvh px-5 py-6 sm:px-10">
       <div className="flex items-center justify-between">
         <Logo />
-        <button onClick={() => signOut()} className="text-sm text-mute hover:text-ink">
-          Sign out
-        </button>
+        <div className="flex items-center gap-4 text-sm">
+          <button onClick={() => setDeleting(true)} className="text-mute hover:text-s-open-ink" data-testid="onboarding-delete-account">
+            Delete account
+          </button>
+          <button onClick={() => signOut()} className="text-mute hover:text-ink">
+            Sign out
+          </button>
+        </div>
       </div>
+      <LeaveOrDeleteModal mode={deleting ? 'delete' : null} onClose={() => setDeleting(false)} members={[]} />
       <motion.div className="mx-auto max-w-3xl py-14" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: EASE }}>
         <h1 className="text-[clamp(2.2rem,5vw,3.4rem)] font-medium leading-[1] tracking-display">
           <span className="text-ink-soft">Hi {me.profile.fullName.split(' ')[0]},</span> let’s get you a board.

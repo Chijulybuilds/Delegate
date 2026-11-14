@@ -146,7 +146,10 @@ function deriveKey(raw: string): Buffer {
 export const DEV_ADMIN_PASSWORD = 'delegate-admin';
 
 export function loadConfig(overrides: Partial<Record<keyof Env, string>> = {}): AppConfig {
-  const parsed = schema.safeParse({ ...process.env, ...overrides });
+  // Values pasted into a dashboard often carry a stray newline or space (e.g. "\n1039…apps.googleusercontent.com"),
+  // which silently breaks OAuth client IDs and keys. Trim every value before validating.
+  const raw = Object.fromEntries(Object.entries({ ...process.env, ...overrides }).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
+  const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);

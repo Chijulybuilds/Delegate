@@ -8,7 +8,7 @@ import { SupabaseStore } from './store/supabase.js';
 import type { Store } from './store/types.js';
 
 export async function createStore(config: AppConfig): Promise<Store> {
-  if (config.supabase) return new SupabaseStore(config.supabase.url, config.supabase.serviceRoleKey, config.supabase.bucket);
+  if (config.supabase) return new SupabaseStore(config.supabase.url, config.supabase.serviceRoleKey, config.supabase.bucket, config.supabase.anonKey);
   const memory = new MemoryStore();
   await seedDemo(memory);
   return memory;

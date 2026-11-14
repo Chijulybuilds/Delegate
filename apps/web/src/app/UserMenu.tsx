@@ -1,5 +1,5 @@
 import { isManagerRole } from '@delegate/shared';
-import { ChevronsUpDown, CreditCard, LogOut, Monitor, Moon, Settings, Sun, UserRound, type LucideIcon } from 'lucide-react';
+import { ChevronsUpDown, CreditCard, DoorOpen, LogOut, Monitor, Moon, Settings, Sun, UserRound, type LucideIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
@@ -37,6 +37,7 @@ export function UserMenu({ ws, variant }: { ws: WorkspaceData; variant: 'sidebar
     { id: 'account', label: 'Account & WhatsApp', icon: UserRound, run: () => navigate('/app/settings?tab=account') },
     { id: 'settings', label: 'Workspace settings', icon: Settings, run: () => navigate('/app/settings') },
     ...(manager ? [{ id: 'billing', label: 'Plan & billing', icon: CreditCard, run: () => navigate('/app/settings?tab=billing') }] : []),
+    { id: 'leave', label: 'Leave or delete account', icon: DoorOpen, run: () => navigate('/app/settings?tab=account&danger=show') },
     { id: 'signout', label: 'Sign out', icon: LogOut, run: () => void signOut(), danger: true },
   ];
 

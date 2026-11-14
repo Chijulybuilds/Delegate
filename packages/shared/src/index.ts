@@ -234,6 +234,7 @@ export type EventType =
   | 'task.proof_attached'
   | 'member.joined'
   | 'member.role_changed'
+  | 'member.left'
   | 'org.created'
   | 'billing.updated'
   | 'integration.connected'
@@ -623,4 +624,18 @@ export function describeCadence(p: Pick<Playbook, 'cadence' | 'weekday' | 'month
     case 'monthly':
       return `Monthly on day ${p.monthDay ?? 1} ${at}`;
   }
+}
+
+/** What leaving the workspace / deleting the account would do (GET /api/account/plan). */
+export interface LeavePlan {
+  role: MemberRole;
+  orgName: string;
+  /** Other people in the workspace (an owner must hand over to one of them). */
+  others: number;
+  /** Unfinished tasks that will be handed over. */
+  openTasks: number;
+  /** Deleting would also delete the whole workspace (sole member). */
+  deletesWorkspace: boolean;
+  /** A paid subscription blocks deleting the workspace until it's cancelled. */
+  paidPlanActive: boolean;
 }

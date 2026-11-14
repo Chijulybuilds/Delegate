@@ -1,12 +1,13 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import type { AppConfig as PublicConfig, MeResponse } from '@delegate/shared';
 import { requireUser } from '../auth/middleware.js';
 import { signDemoToken, type UserTokenVerifier } from '../auth/tokens.js';
 import type { AppConfig } from '../config.js';
-import { notFound } from '../lib/errors.js';
+import { HttpError, notFound } from '../lib/errors.js';
 import { uuid } from '../lib/ids.js';
+import type { AccountService } from '../services/account.js';
 import type { ProofVerifier } from '../services/ai.js';
 import type { WorkspaceService } from '../services/workspace.js';
 import { MemoryStore } from '../store/memory.js';
@@ -19,6 +20,7 @@ export function publicRoutes(deps: {
   verifier: UserTokenVerifier;
   ai: ProofVerifier;
   workspace: WorkspaceService;
+  account: AccountService;
   setupIssue: () => Promise<string | null>;
 }) {
   const { config, store, verifier, workspace } = deps;
@@ -113,6 +115,30 @@ export function publicRoutes(deps: {
     const body = z.object({ code: z.string().trim().min(4).max(32) }).parse(req.body);
     const org = await workspace.joinWorkspace(req.user!, body.code);
     res.status(201).json({ org });
+  });
+
+  /* ------------------------ Leave workspace / delete account ------------------------ */
+
+  // Not behind requireMember: someone who's no longer in a workspace can still delete their account.
+  const notDemoPersona: RequestHandler = (req, _res, next) => {
+    if (DEMO_PERSONAS.some((p) => p.id === req.user!.id)) {
+      throw new HttpError(400, 'The demo people can’t leave or be deleted. Try it with your own email on the demo sign-in screen.', 'demo_persona');
+    }
+    next();
+  };
+  const handover = z.object({ newOwnerId: z.string().min(1).max(64).optional(), deleteWorkspace: z.boolean().optional() });
+
+  r.get('/account/plan', authed, async (req, res) => {
+    res.json({ plan: await deps.account.plan(req.user!.id) });
+  });
+
+  r.post('/account/leave', authed, authLimiter, notDemoPersona, async (req, res) => {
+    const { newOwnerId } = handover.parse(req.body ?? {});
+    res.json(await deps.account.leave(req.user!.id, { newOwnerId }));
+  });
+
+  r.post('/account/delete', authed, authLimiter, notDemoPersona, async (req, res) => {
+    res.json(await deps.account.deleteAccount(req.user!.id, handover.parse(req.body ?? {})));
   });
 
   return r;

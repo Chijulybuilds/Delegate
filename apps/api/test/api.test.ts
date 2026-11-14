@@ -312,3 +312,10 @@ describe('Supabase URL', () => {
     }
   });
 });
+
+describe('environment values', () => {
+  it('ignores stray whitespace and line breaks around pasted values', () => {
+    const c = loadConfig({ NODE_ENV: 'test', SUPABASE_URL: '', GOOGLE_CLIENT_ID: '\n1039-abc.apps.googleusercontent.com  ', GOOGLE_API_KEY: ' AIza-key\n', GOOGLE_PROJECT_NUMBER: '1039\n' });
+    expect(c.google).toEqual({ clientId: '1039-abc.apps.googleusercontent.com', apiKey: 'AIza-key', appId: '1039' });
+  });
+});
