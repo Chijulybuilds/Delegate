@@ -8,6 +8,8 @@ import { useThemeScope } from './lib/theme';
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const PrivacyPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.PrivacyPage })));
+const TermsPage = lazy(() => import('./pages/Legal').then((m) => ({ default: m.TermsPage })));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AppShell = lazy(() => import('./app/AppShell'));
@@ -51,6 +53,8 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/auth/reset" element={<ResetPassword />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route
           path="/app"

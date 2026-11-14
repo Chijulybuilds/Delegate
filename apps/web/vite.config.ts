@@ -1,9 +1,20 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+/**
+ * Google Search Console ownership check ("HTML tag" method): set GOOGLE_SITE_VERIFICATION to the
+ * content="…" value Google gives you (Vercel env var, then redeploy) and the tag lands in <head>.
+ */
+function googleSiteVerification(token: string | undefined): Plugin {
+  return {
+    name: 'google-site-verification',
+    transformIndexHtml: (html) => (token ? html.replace('</head>', `  <meta name="google-site-verification" content="${token.replace(/[^\w-]/g, '')}" />\n  </head>`) : html),
+  };
+}
+
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), tailwindcss(), googleSiteVerification(loadEnv(mode, '../../', '').GOOGLE_SITE_VERIFICATION)],
   // One .env at the repo root serves both apps (only VITE_* keys reach the browser).
   envDir: '../../',
   server: {
@@ -31,4 +42,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

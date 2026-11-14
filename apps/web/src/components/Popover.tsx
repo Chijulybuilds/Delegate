@@ -13,6 +13,8 @@ export type Placement = 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
 
 interface Position {
   left: number;
+  right?: number;
+  sheet?: boolean;
   top?: number;
   bottom?: number;
   maxHeight: number;
@@ -23,14 +25,16 @@ interface Position {
 const GAP = 8;
 const MARGIN = 8;
 
-function compute(anchor: HTMLElement, placement: Placement, panelWidth: number, matchWidth: boolean, maxHeight: number): Position {
+function compute(anchor: HTMLElement, placement: Placement, panelWidth: number, matchWidth: boolean, maxHeight: number, minSpace: number): Position {
   const r = anchor.getBoundingClientRect();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const below = vh - r.bottom - GAP - MARGIN;
   const abovePx = r.top - GAP - MARGIN;
   const wantAbove = placement.startsWith('top');
-  const above = wantAbove ? abovePx >= Math.min(maxHeight, 220) || abovePx > below : below < Math.min(maxHeight, 220) && abovePx > below;
+  // Open toward the side with room; flip when the preferred side has less than `minSpace`.
+  const need = Math.min(maxHeight, minSpace);
+  const above = wantAbove ? abovePx >= need || abovePx > below : below < need && abovePx > below;
   const minWidth = matchWidth ? r.width : 0;
   const width = Math.max(panelWidth, minWidth);
   let left = placement.endsWith('end') ? r.right - width : r.left;
@@ -52,6 +56,8 @@ export function Popover({
   placement = 'bottom-start',
   matchWidth = false,
   maxHeight = 360,
+  minSpace = 220,
+  sheetOnMobile = false,
   className,
   label,
   id,
@@ -63,6 +69,10 @@ export function Popover({
   placement?: Placement;
   matchWidth?: boolean;
   maxHeight?: number;
+  /** Space the panel would like on its side before flipping to the other (default 220px). */
+  minSpace?: number;
+  /** On phones, slide up from the bottom of the screen as a sheet instead of hanging off the trigger. */
+  sheetOnMobile?: boolean;
   className?: string;
   label?: string;
   id?: string;
@@ -72,8 +82,12 @@ export function Popover({
 
   const update = useCallback(() => {
     if (!anchor.current) return;
-    setPos(compute(anchor.current, placement, panel.current?.offsetWidth ?? 0, matchWidth, maxHeight));
-  }, [anchor, placement, matchWidth, maxHeight]);
+    if (sheetOnMobile && window.innerWidth < 640) {
+      setPos({ left: 8, right: 8, bottom: 8, maxHeight: Math.round(window.innerHeight * 0.86), minWidth: 0, above: true, sheet: true });
+      return;
+    }
+    setPos(compute(anchor.current, placement, panel.current?.offsetWidth ?? 0, matchWidth, maxHeight, minSpace));
+  }, [anchor, placement, matchWidth, maxHeight, minSpace, sheetOnMobile]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -108,20 +122,25 @@ export function Popover({
 
   return createPortal(
     <AnimatePresence>
+      {open && pos?.sheet && (
+        <motion.div key="scrim" className="fixed inset-0 z-[119] bg-black/30 backdrop-blur-[1px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} aria-hidden />
+      )}
       {open && pos && (
         <motion.div
+          key="panel"
           ref={panel}
           id={id}
           aria-label={label}
           className={cx(
             'fixed z-[120] overflow-hidden rounded-2xl border border-line bg-paper/95 p-1.5 text-ink shadow-[var(--shadow-pop)] backdrop-blur-xl',
             className,
+            pos.sheet && 'w-auto! rounded-3xl',
           )}
-          style={{ left: pos.left, top: pos.top, bottom: pos.bottom, minWidth: pos.minWidth, transformOrigin: pos.above ? 'bottom center' : 'top center' }}
-          initial={{ opacity: 0, y: pos.above ? 6 : -6, scale: 0.96 }}
+          style={{ left: pos.left, right: pos.right, top: pos.top, bottom: pos.bottom, minWidth: pos.minWidth, transformOrigin: pos.above ? 'bottom center' : 'top center' }}
+          initial={pos.sheet ? { opacity: 0, y: 48 } : { opacity: 0, y: pos.above ? 6 : -6, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: pos.above ? 4 : -4, scale: 0.97, transition: { duration: 0.12 } }}
-          transition={{ type: 'spring', stiffness: 560, damping: 36, mass: 0.7 }}
+          exit={pos.sheet ? { opacity: 0, y: 40, transition: { duration: 0.18 } } : { opacity: 0, y: pos.above ? 4 : -4, scale: 0.97, transition: { duration: 0.12 } }}
+          transition={pos.sheet ? { type: 'spring', stiffness: 420, damping: 38 } : { type: 'spring', stiffness: 560, damping: 36, mass: 0.7 }}
         >
           {typeof children === 'function' ? children({ maxHeight: pos.maxHeight, above: pos.above }) : children}
         </motion.div>

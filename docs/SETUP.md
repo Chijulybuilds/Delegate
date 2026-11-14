@@ -163,7 +163,20 @@ Use **one** Google Cloud project for both.
 
    Press **Create**, then copy the **Client ID** and **Client secret**.
 6. Paste them into **Supabase → Authentication → Sign In / Providers → Google**, enable it and save.
-7. Under **Audience**: while the app is in *Testing*, only the test users you add can sign in. Click **Publish app** before launch. With only the scopes above, publishing does not need a Google review. Brand verification takes a few days if Google asks for it.
+7. Under **Audience**: while the app is in *Testing*, only the test users you add can sign in. Click **Publish app** before launch. With only the scopes above, publishing does not need a Google review.
+8. **Show "Delegate" instead of `xxxx.supabase.co` on Google's sign-in screen (brand verification, free, takes a few days):**
+   1. Prove you own the site. Go to [Google Search Console](https://search.google.com/search-console) → **Add property** → **URL prefix** → `https://YOUR-DOMAIN/` → choose the **HTML tag** method. Copy only the `content="…"` value, add it in Vercel as `GOOGLE_SITE_VERIFICATION`, redeploy, then click **Verify**. (On your own domain, the DNS method works too.)
+   2. In **Google Auth Platform → Branding**, fill in:
+      - **App name:** Delegate
+      - **App logo:** a 120×120 PNG
+      - **Support email**
+      - **Home page:** `https://YOUR-DOMAIN/`
+      - **Privacy policy:** `https://YOUR-DOMAIN/privacy`
+      - **Terms of service:** `https://YOUR-DOMAIN/terms`
+      - **Authorized domains:** `YOUR-DOMAIN` and `YOUR-REF.supabase.co`
+      - Save.
+   3. Click **Verify branding** and submit. Google may ask you to prove ownership of every authorized domain. If it won't accept the `supabase.co` domain, a Supabase custom domain (Project Settings → Custom Domains, paid) replaces it with your own.
+   4. Set `VITE_COMPANY_NAME` and `VITE_SUPPORT_EMAIL` in Vercel first, so the legal pages show your real name and a contact inbox.
 
 Flow: browser → Google → Supabase (`/auth/v1/callback`) → Delegate (`/auth/callback`). The API verifies the Supabase token on every request.
 

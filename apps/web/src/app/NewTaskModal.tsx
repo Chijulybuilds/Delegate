@@ -1,7 +1,7 @@
 import { isManagerRole, type TaskPriority } from '@delegate/shared';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
-import { Button, Field, Input, Modal, Select, Textarea } from '../components/ui';
+import { Button, DateTimePicker, Field, Input, Modal, Select, Textarea } from '../components/ui';
 import { toLocalInput } from '../lib/format';
 import { useCreateTask, type WorkspaceData } from './data';
 import { departmentOptions, memberOptions, priorityOptions } from './options';
@@ -74,7 +74,7 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
             <Select value={priority} onChange={setPriority} options={priorityOptions} aria-label="Priority" />
           </Field>
           <Field label="Due">
-            <Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} />
+            <DateTimePicker value={due} onChange={setDue} aria-label="Due" data-testid="task-due" />
           </Field>
         </div>
         <div className="flex justify-end gap-2 pt-1">

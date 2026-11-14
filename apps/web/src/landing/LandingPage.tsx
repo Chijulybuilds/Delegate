@@ -15,6 +15,7 @@ import { AnimatePresence, motion, useMotionValueEvent, useScroll, useTransform, 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Button, cx, EASE, Logo, Pill } from '../components/ui';
+import { mailto } from '../lib/site';
 import { BoardPreview } from './BoardPreview';
 import { PhoneStage, useHowStep } from './PhoneStage';
 
@@ -332,7 +333,7 @@ function Pricing() {
                 </ul>
                 <div className="mt-auto pt-8">
                   {p.name === 'Enterprise' ? (
-                    <a href="mailto:sales@delegate.app?subject=Delegate%20Enterprise">
+                    <a href={mailto('Delegate Enterprise') ?? '/login?intent=signup'}>
                       <Button variant="outline" className="w-full">
                         {p.cta}
                       </Button>
@@ -370,11 +371,13 @@ function FinalCta() {
               Get started free <ArrowUpRight className="size-4" />
             </Button>
           </Link>
-          <a href="mailto:sales@delegate.app?subject=Delegate%20demo">
-            <Button size="lg" variant="outline">
-              Book a demo
-            </Button>
-          </a>
+          {mailto() && (
+            <a href={mailto('Delegate demo')!}>
+              <Button size="lg" variant="outline">
+                Book a demo
+              </Button>
+            </a>
+          )}
         </Reveal>
       </div>
     </section>
@@ -391,7 +394,7 @@ function Footer() {
         </div>
         {[
           ['Product', [['Board', '#preview'], ['How it works', '#how'], ['Pricing', '#pricing']]],
-          ['Company', [['Contact', 'mailto:hello@delegate.app'], ['Sales', 'mailto:sales@delegate.app']]],
+          ['Company', [...(mailto() ? [['Contact', mailto()!]] : []), ['Privacy', '/privacy'], ['Terms', '/terms']]],
           ['Account', [['Log in', '/login'], ['Get started', '/login?intent=signup']]],
         ].map(([title, links]) => (
           <div key={title as string}>
