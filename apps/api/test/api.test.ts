@@ -40,6 +40,7 @@ describe('public endpoints', () => {
     const res = await request(app).get('/api/config').expect(200);
     expect(res.body.authMode).toBe('demo');
     expect(res.body.supabaseAnonKey).toBeNull();
+    expect(res.body.emailOtpLength).toBe(6); // digits in the email sign-up code
   });
 
   it('rejects workspace routes without a token', async () => {

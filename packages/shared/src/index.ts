@@ -270,6 +270,8 @@ export interface AppConfig {
     googleDrive: { clientId: string; apiKey: string; appId: string } | null;
   };
   storage: 'api' | 'supabase';
+  /** Digits in the email sign-up code (Supabase "Email OTP Length"). */
+  emailOtpLength: number;
   /** Set when the server is running but its database isn't ready (e.g. a migration hasn't been run). */
   setupIssue: string | null;
 }

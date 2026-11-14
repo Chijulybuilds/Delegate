@@ -1,21 +1,27 @@
-import { ArrowLeft, MailCheck } from 'lucide-react';
+import { ArrowLeft, MailCheck, ShieldCheck } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
+import { CodeInput } from '../components/CodeInput';
 import { MIN_PASSWORD, PasswordInput } from '../components/PasswordInput';
-import { Button, EASE, Field, Input } from '../components/ui';
+import { Button, cx, EASE, Field, Input } from '../components/ui';
 import { AuthUiError, useAuth } from '../lib/auth';
 
-type View = 'form' | 'forgot' | 'sent';
+type View = 'form' | 'forgot' | 'sent' | 'code';
+/** Supabase refuses a second email to the same address within 60 seconds. */
+const RESEND_AFTER = 60;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Email + password next to "Continue with Google":
- *   sign up  → name, email, password → "check your inbox" (when Supabase asks to confirm the address)
- *   log in   → email, password (+ "Forgot password?" → reset link by email)
+ *   sign up  → name, email, password → a 6-digit code by email → type it in → signed in → onboarding
+ *              (proves the person really owns the address; Supabase's "Confirm signup" email carries the code)
+ *   log in   → email, password (+ "Forgot password?" → reset link by email). An address that was never
+ *              confirmed gets a code too.
  */
 export function EmailAuth({ signup }: { signup: boolean }) {
-  const { signUpWithPassword, signInWithPassword, sendPasswordReset, resendConfirmation } = useAuth();
+  const { signUpWithPassword, signInWithPassword, sendPasswordReset, resendConfirmation, verifyEmailCode, config } = useAuth();
+  const codeLength = config?.emailOtpLength ?? 6;
   const [params] = useSearchParams();
   const [view, setView] = useState<View>(params.get('mode') === 'forgot' ? 'forgot' : 'form');
   const [sent, setSent] = useState<{ kind: 'confirm' | 'reset'; email: string } | null>(null);
@@ -25,6 +31,10 @@ export function EmailAuth({ signup }: { signup: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [code, setCode] = useState('');
+  const [codeState, setCodeState] = useState<'idle' | 'checking' | 'error' | 'success'>('idle');
+  const [shake, setShake] = useState(0);
+  const [resent, setResent] = useState(false);
 
   // Switching between "Get started" and "Log in" starts fresh.
   useEffect(() => {
@@ -40,7 +50,30 @@ export function EmailAuth({ signup }: { signup: boolean }) {
 
   const fail = (e: unknown) => {
     setError(e instanceof AuthUiError ? { message: e.message, code: e.code } : { message: e instanceof Error ? e.message : 'Something went wrong. Please try again.' });
+    if (e instanceof AuthUiError && e.retryAfter) setCooldown(e.retryAfter);
     setBusy(false);
+  };
+
+  const askForCode = (to: string) => {
+    setSent({ kind: 'confirm', email: to });
+    setCode('');
+    setCodeState('idle');
+    setView('code');
+    setCooldown(RESEND_AFTER);
+  };
+
+  const verify = async (value: string) => {
+    if (!sent || codeState === 'checking') return;
+    setError(null);
+    setCodeState('checking');
+    try {
+      await verifyEmailCode(sent.email, value);
+      setCodeState('success'); // signed in: the sign-in page moves on to onboarding by itself
+    } catch (err) {
+      setCodeState('error');
+      setShake((n) => n + 1);
+      fail(err);
+    }
   };
 
   const submit = async (e: FormEvent) => {
@@ -56,9 +89,7 @@ export function EmailAuth({ signup }: { signup: boolean }) {
       if (signup) {
         const { needsConfirmation } = await signUpWithPassword({ fullName, email: email.trim(), password });
         if (needsConfirmation) {
-          setSent({ kind: 'confirm', email });
-          setView('sent');
-          setCooldown(30);
+          askForCode(email.trim());
           setBusy(false);
         }
         // Otherwise a session exists: the sign-in page moves on to onboarding by itself.
@@ -79,7 +110,7 @@ export function EmailAuth({ signup }: { signup: boolean }) {
       await sendPasswordReset(email.trim());
       setSent({ kind: 'reset', email: email.trim() });
       setView('sent');
-      setCooldown(30);
+      setCooldown(RESEND_AFTER);
     } catch (err) {
       fail(err);
     }
@@ -89,12 +120,23 @@ export function EmailAuth({ signup }: { signup: boolean }) {
   const resend = async (kind: 'confirm' | 'reset', to: string) => {
     setError(null);
     try {
-      if (kind === 'confirm') await resendConfirmation(to);
-      else await sendPasswordReset(to);
-      setSent({ kind, email: to });
-      setView('sent');
-      setCooldown(30);
+      if (kind === 'confirm') {
+        await resendConfirmation(to);
+        askForCode(to);
+        setResent(true);
+      } else {
+        await sendPasswordReset(to);
+        setSent({ kind, email: to });
+        setView('sent');
+        setCooldown(RESEND_AFTER);
+      }
     } catch (err) {
+      // A code went out less than a minute ago: take them to the boxes to type that one in.
+      if (kind === 'confirm' && err instanceof AuthUiError && err.code === 'wait' && view !== 'code') {
+        askForCode(to);
+        setCooldown(err.retryAfter ?? RESEND_AFTER);
+        return setError({ message: 'We emailed you a code less than a minute ago. Type that one in.' });
+      }
       fail(err);
     }
   };
@@ -137,8 +179,8 @@ export function EmailAuth({ signup }: { signup: boolean }) {
             </div>
             <Problem error={error}>
               {error?.code === 'email_not_confirmed' && (
-                <button type="button" onClick={() => resend('confirm', email)} className="mt-1 font-medium underline underline-offset-4">
-                  Send the confirmation email again
+                <button type="button" onClick={() => resend('confirm', email.trim())} className="mt-1 font-medium underline underline-offset-4">
+                  Email me a code
                 </button>
               )}
               {error?.code === 'user_already_exists' && (
@@ -168,6 +210,60 @@ export function EmailAuth({ signup }: { signup: boolean }) {
             </Button>
             <BackLink onClick={() => (setView('form'), setError(null))}>Back to log in</BackLink>
           </form>
+        )}
+
+        {view === 'code' && sent && (
+          <div className="rounded-3xl border border-line bg-paper p-6 text-center shadow-[var(--shadow-card)]" data-testid="auth-code">
+            <motion.span
+              className={cx('mx-auto grid size-14 place-items-center rounded-2xl transition-colors', codeState === 'success' ? 'bg-s-done-soft text-s-done-ink' : 'bg-milk-2 text-ink')}
+              initial={{ scale: 0.4, rotate: -12, opacity: 0 }}
+              animate={{ scale: 1, rotate: 0, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 16 }}
+            >
+              {codeState === 'success' ? <ShieldCheck className="size-7" strokeWidth={1.8} /> : <MailCheck className="size-7" strokeWidth={1.8} />}
+            </motion.span>
+            <p className="mt-4 text-lg font-medium tracking-[-0.02em]">{codeState === 'success' ? 'Email confirmed' : 'Enter your code'}</p>
+            <p className="mx-auto mt-1.5 max-w-sm text-sm text-mute">
+              {resent ? 'We sent a new' : 'We sent a'} {codeLength}-digit code to <span className="font-medium text-ink">{sent.email}</span>. It works for one hour.
+            </p>
+            <div className="mt-6">
+              <CodeInput
+                length={codeLength}
+                value={code}
+                onChange={(v) => {
+                  setCode(v);
+                  if (codeState === 'error') setCodeState('idle');
+                }}
+                onComplete={verify}
+                disabled={codeState === 'checking' || codeState === 'success'}
+                state={codeState === 'error' ? 'error' : codeState === 'success' ? 'success' : 'idle'}
+                shake={shake}
+                autoFocus
+                data-testid="auth-code-input"
+              />
+            </div>
+            <div className="mt-4">
+              <Problem error={error} />
+            </div>
+            <Button
+              size="lg"
+              className="mt-4 w-full"
+              onClick={() => verify(code)}
+              disabled={code.length < codeLength || codeState === 'success'}
+              loading={codeState === 'checking'}
+              data-testid="auth-code-submit"
+            >
+              {codeState === 'success' ? 'Signing you in…' : 'Confirm email'}
+            </Button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <MailShortcut email={sent.email} variant="outline" />
+              <Button variant="outline" size="sm" disabled={cooldown > 0} onClick={() => resend('confirm', sent.email)} data-testid="auth-resend">
+                {cooldown > 0 ? `Send a new code in ${cooldown}s` : 'Send a new code'}
+              </Button>
+            </div>
+            <p className="mt-3 text-xs text-faint">Not in your inbox? Check spam or promotions. Got a link instead of a code? Tapping it works too.</p>
+            <BackLink onClick={() => (setView('form'), setError(null), setResent(false))}>Use a different email</BackLink>
+          </div>
         )}
 
         {view === 'sent' && sent && (
@@ -233,7 +329,7 @@ function BackLink({ onClick, children }: { onClick: () => void; children: ReactN
 }
 
 /** One-tap link to the inbox for the big webmail providers. */
-function MailShortcut({ email }: { email: string }) {
+function MailShortcut({ email, variant = 'primary' }: { email: string; variant?: 'primary' | 'outline' }) {
   const domain = email.split('@')[1]?.toLowerCase() ?? '';
   const inbox = /gmail\.com|googlemail\.com/.test(domain)
     ? { label: 'Open Gmail', href: 'https://mail.google.com/' }
@@ -244,8 +340,10 @@ function MailShortcut({ email }: { email: string }) {
         : null;
   if (!inbox) return null;
   return (
-    <a href={inbox.href} target="_blank" rel="noreferrer" className="mt-4 inline-block">
-      <Button size="sm">{inbox.label}</Button>
+    <a href={inbox.href} target="_blank" rel="noreferrer" className={cx('inline-block', variant === 'primary' && 'mt-4')}>
+      <Button size="sm" variant={variant} tabIndex={-1}>
+        {inbox.label}
+      </Button>
     </a>
   );
 }

@@ -93,44 +93,54 @@ Demo data lives in memory and resets when the API restarts.
 
 ### Email and password sign-in
 
-People can sign up and log in with an email and password as well as with Google. Supabase sends the two emails involved: *confirm your address* and *reset your password*.
+People can sign up and log in with an email and password as well as with Google. To prove the address is really theirs, a new account gets a **6-digit code** by email and types it in (no link to click). Supabase sends two emails: the *sign-up code* and *reset your password*.
 
 1. **Authentication → Sign In / Providers → Email**:
    - Leave **Enable Email provider** on.
-   - Keep **Confirm email** on, so nobody can sign up with someone else's address.
-   - Set **Minimum password length** to `8`, the same as the app.
+   - Keep **Confirm email** on: that's what sends the code, so nobody can sign up with someone else's address.
+   - **Email OTP Length**: `6` (if you pick another length, set `EMAIL_OTP_LENGTH` in Vercel to the same number).
+   - **Email OTP Expiration**: `3600` seconds (one hour; the app tells people this).
+   - **Minimum password length**: `8`, the same as the app.
 2. **Authentication → URL Configuration → Redirect URLs**: next to the `/auth/callback` entries, add:
    - `http://localhost:3000/auth/reset`
    - `https://YOUR-DOMAIN/auth/reset`
-3. **Custom SMTP (required before real users sign up).** Supabase's built-in sender only delivers to your own team's addresses, and only a few emails an hour. Send through [Resend](https://resend.com) (free tier):
-   1. In Resend, go to **Domains → Add domain**, add the DNS records it shows, and wait for **Verified**.
-   2. Under **API Keys → Create**, choose *Sending access*.
-   3. In Supabase → **Authentication → Emails → SMTP Settings**, turn on **Enable custom SMTP** and fill in:
-
-      | Field | Value |
-      |---|---|
-      | Host | `smtp.resend.com` |
-      | Port | `465` |
-      | Username | `resend` |
-      | Password | your Resend API key |
-      | Sender email | e.g. `no-reply@yourdomain.com` |
-      | Sender name | `Delegate` |
-   4. Under **Authentication → Rate Limits**, raise *emails sent per hour* (e.g. to 100).
-4. **Email templates (recommended).** With these, the links work on any device, not only in the browser where someone signed up. Go to **Authentication → Emails → Templates**:
-   - **Confirm signup**, link:
+3. **Email templates.** Go to **Authentication → Emails → Templates**.
+   - **Confirm signup**: this turns the link into a code. Set **Subject** to `Your Delegate code`, and replace the **Body** with:
      ```html
-     <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email">Confirm your email</a>
+     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111">
+       <p style="font-size:20px;font-weight:600;margin:0 0 8px">Confirm your email</p>
+       <p style="font-size:15px;line-height:1.5;color:#555;margin:0 0 24px">Type this code into Delegate to finish creating your account:</p>
+       <p style="font-size:34px;font-weight:600;letter-spacing:8px;margin:0 0 24px;font-family:Menlo,Consolas,monospace">{{ .Token }}</p>
+       <p style="font-size:13px;line-height:1.5;color:#888;margin:0">The code expires in one hour. If you didn't try to sign up for Delegate, ignore this email.</p>
+     </div>
      ```
-   - **Reset Password**, link:
+   - **Reset Password**: keeps a link, so it opens on any device. Subject `Reset your Delegate password`; in the body, use this link:
      ```html
      <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a>
      ```
+4. **Custom SMTP: sender name "Delegate" (required before real users sign up).** Until you do this, every email arrives from **Supabase Auth**, and Supabase's built-in sender only allows **2 emails an hour**. That's why pressing *Resend* seems to do nothing. With custom SMTP, emails come from **Delegate**, from your own address. Pick one:
+   - **Resend (best, needs a domain you own):**
+     1. In [Resend](https://resend.com), go to **Domains → Add domain**, add the DNS records it shows, and wait for **Verified**.
+     2. Under **API Keys → Create**, choose *Sending access*.
+     3. In Supabase → **Authentication → Emails → SMTP Settings**, turn on **Enable custom SMTP**:
 
-   Keep your own wording around the links. With the default templates the links still work, but only when opened in the same browser.
+        | Field | Value |
+        |---|---|
+        | Sender email | `no-reply@yourdomain.com` |
+        | Sender name | `Delegate` |
+        | Host | `smtp.resend.com` |
+        | Port | `465` |
+        | Username | `resend` |
+        | Password | your Resend API key |
+   - **Gmail (no domain needed, fine for an MVP, up to ~500 emails a day):**
+     1. On the Google account that will send the emails, turn on **2-Step Verification**, then create an **App password** at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+     2. In Supabase → **SMTP Settings**: Sender email = that Gmail address, Sender name = `Delegate`, Host = `smtp.gmail.com`, Port = `465`, Username = the Gmail address, Password = the 16-letter app password.
+   - Then, under **Authentication → Rate Limits**, raise *emails sent per hour* (e.g. to 100).
 
 Flow:
-- **Sign up:** email + password → *Check your inbox* → the link confirms the address, signs the person in and opens onboarding.
-- **Log in:** email + password, with **Forgot password?** → email → `/auth/reset` → new password → the board.
+- **Sign up:** name, email, password → **Enter your code** (6 boxes; paste works, and phones offer the code from Mail) → signed in → onboarding. *Send a new code* unlocks after 60 seconds, the minimum Supabase allows.
+- **Log in:** email + password. An address that was never confirmed gets a code the same way. **Forgot password?** → email link → `/auth/reset` → new password → the board.
+- If the *Confirm signup* template still contains a link instead of `{{ .Token }}`, the link keeps working; switch the template so people get a code.
 
 > Token verification: new projects sign sessions with asymmetric keys, which the API verifies automatically through the project's JWKS. Legacy projects that use a shared JWT secret can also set `SUPABASE_JWT_SECRET` (optional).
 
@@ -256,7 +266,9 @@ Delegate tells you why on the sign-in page itself, in a red box. The usual cause
 | *…is required in production* | Your `.env` says `NODE_ENV=production`. Locally, use `NODE_ENV=development`. On Vercel, add the named variable and redeploy. |
 | *The server didn't accept your Google session* | `SUPABASE_URL` / keys on the server belong to a different Supabase project than the one you signed in to. |
 | Clicking **Continue with Google** shows `{"message":"No API key found in request"}` | That page is Supabase, not Google. Either `SUPABASE_URL` has an extra path (it must be exactly `https://YOUR-REF.supabase.co`; the app now trims it, so redeploy), or Supabase → Authentication → URL Configuration → **Site URL** points at a `supabase.co` address. It must be your app: `http://localhost:3000` or `https://YOUR-APP.vercel.app`. |
-| The confirmation or reset email never arrives | Set up custom SMTP (step 2, *Email and password sign-in*). Supabase's built-in sender only mails your own team's addresses, a few per hour. |
+| The sign-up code or reset email never arrives, or the email says it's from *Supabase Auth* | Set up custom SMTP with sender name `Delegate` (step 2, *Email and password sign-in*). Supabase's built-in sender only mails your own team's addresses, 2 emails an hour. |
+| The email has a link, not a code | Change the **Confirm signup** template so it shows `{{ .Token }}` (step 2, *Email templates*). |
+| *That code is wrong or has expired* with the right code | **Email OTP Length** in Supabase must match `EMAIL_OTP_LENGTH` (default 6). Codes expire after **Email OTP Expiration** (default one hour), and only the newest code works. |
 | An email link says it expired or was opened in a different browser | Update the two email templates (same section) so links work on any device. If it was a sign-up confirmation, the address is confirmed anyway, so just log in. |
 | Google sends you back to the home page | Add `http://localhost:3000/auth/callback` (and your live domain's) under Supabase → Authentication → URL Configuration → Redirect URLs. Delegate finishes the sign-in anyway, but Supabase should allow the callback. |
 

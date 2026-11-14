@@ -47,6 +47,7 @@ export function publicRoutes(deps: {
         googleDrive: config.google,
       },
       storage: config.supabase ? 'supabase' : 'api',
+      emailOtpLength: config.emailOtpLength,
     };
     res.json(body);
   });

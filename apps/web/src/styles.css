@@ -157,3 +157,14 @@ html.theme-switching *::after {
     background: white;
   }
 }
+
+/* Blinking caret in the one-time code boxes (CodeInput). */
+@keyframes caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
