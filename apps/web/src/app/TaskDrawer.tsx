@@ -3,7 +3,7 @@ import { Download, FileText, HardDrive, Link2, Paperclip, Send, ShieldCheck, Spa
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
-import { Avatar, Button, cx, Drawer, EASE, Field, Input, Modal, Select, Spinner, StatusBadge, Textarea } from '../components/ui';
+import { Avatar, Button, cx, DateTimePicker, Drawer, EASE, Field, Input, Modal, Select, Spinner, StatusBadge, Textarea } from '../components/ui';
 import { api, request } from '../lib/api';
 import { pickDriveFile } from '../lib/google';
 import { getSupabase } from '../lib/supabase';
@@ -147,12 +147,12 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
             </Meta>
             <Meta label="Due">
               {canEdit ? (
-                <input
-                  type="datetime-local"
-                  className={cx('w-full bg-transparent font-medium outline-none', due.overdue && 'text-s-open-ink')}
-                  defaultValue={task.dueAt ? toLocalInput(new Date(task.dueAt)) : ''}
-                  onBlur={(e) => e.target.value && edit({ dueAt: new Date(e.target.value).toISOString() })}
+                <DateTimePicker
+                  size="inline"
+                  value={task.dueAt ? toLocalInput(new Date(task.dueAt)) : ''}
+                  onChange={(v) => edit({ dueAt: v ? new Date(v).toISOString() : null })}
                   aria-label="Due date"
+                  data-testid="drawer-due"
                 />
               ) : (
                 <span className={cx('font-medium', due.overdue && 'text-s-open-ink')}>{due.text}</span>

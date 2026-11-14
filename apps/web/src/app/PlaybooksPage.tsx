@@ -3,7 +3,7 @@ import { describeCadence, isManagerRole, type Playbook, type PlaybookCadence, ty
 import { Briefcase, CalendarDays, CalendarRange, Pencil, Play, Plus, Repeat, Repeat2, Trash2, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
-import { Avatar, Button, Card, cx, EmptyState, Field, Input, Modal, Select, Spinner, type SelectOption } from '../components/ui';
+import { Avatar, Button, Card, cx, EmptyState, Field, Input, Modal, Select, Spinner, TimePicker, type SelectOption } from '../components/ui';
 import { api } from '../lib/api';
 import { timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
@@ -188,7 +188,7 @@ function PlaybookEditor({ ws, playbook, onClose, onSaved }: { ws: WorkspaceData;
             </Field>
           )}
           <Field label="At">
-            <Input type="time" value={draft.timeOfDay} onChange={(e) => setDraft({ ...draft, timeOfDay: e.target.value })} required />
+            <TimePicker value={draft.timeOfDay} onChange={(v) => setDraft({ ...draft, timeOfDay: v })} aria-label="At" data-testid="playbook-time" />
           </Field>
         </div>
 
