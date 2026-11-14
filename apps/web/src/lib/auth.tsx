@@ -304,6 +304,13 @@ function friendlyAuthError(error: { message: string; code?: string; status?: num
   if (code === 'otp_expired' || /expired|invalid.*(token|link)/i.test(msg)) {
     return new AuthUiError('This link has expired or was already used. Request a new one.', 'link_expired');
   }
+  // Supabase couldn't hand the email to the mail server (custom SMTP settings wrong, or the sender refused it).
+  if (/error sending .*email|sending (confirmation|recovery|magic link)/i.test(msg)) {
+    return new AuthUiError('We couldn’t send the email just now, so your account wasn’t created yet. Please try again in a few minutes, or use Google.', 'email_send_failed');
+  }
+  if (code === 'email_address_not_authorized' || /not authorized/i.test(msg)) {
+    return new AuthUiError('Emails to this address aren’t allowed yet. Please use Google, or try again later.', 'email_not_authorized');
+  }
   if (code === 'email_address_invalid' || /invalid.*email|unable to validate email/i.test(msg)) return new AuthUiError('That email address doesn’t look right.', 'email_invalid');
   return new AuthUiError(msg || 'Something went wrong. Please try again.', code || 'auth_error');
 }
