@@ -51,6 +51,10 @@ export function useBoard() {
   });
 }
 
+export function useAllAudits() {
+  return useQuery({ queryKey: ['audits', 'all-time'], queryFn: () => api.get<{ tasks: Task[] }>('/audits/all-time') });
+}
+
 export function useTaskDetail(id: string | null) {
   return useQuery({
     queryKey: ['task', id],

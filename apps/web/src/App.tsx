@@ -18,6 +18,7 @@ const HeartbeatPage = lazy(() => import('./app/HeartbeatPage'));
 const InsightsPage = lazy(() => import('./app/InsightsPage'));
 const PlaybooksPage = lazy(() => import('./app/PlaybooksPage'));
 const TeamPage = lazy(() => import('./app/TeamPage'));
+const AuditPage = lazy(() => import('./app/AuditPage'));
 const SettingsPage = lazy(() => import('./app/SettingsPage'));
 // The platform console is only reachable by typing /admin — nothing in the product links to it.
 const AdminRoot = lazy(() => import('./admin/AdminRoot'));
@@ -73,6 +74,7 @@ export function App() {
           <Route path="velocity" element={<Navigate to="/app/insights?tab=velocity" replace />} />
           <Route path="standup" element={<Navigate to="/app/insights?tab=standup" replace />} />
           <Route path="team" element={<TeamPage />} />
+          <Route path="audits" element={<AuditPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="/admin/*" element={<AdminRoot />} />

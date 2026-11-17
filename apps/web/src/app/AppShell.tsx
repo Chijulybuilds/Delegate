@@ -1,5 +1,5 @@
 import { isManagerRole, type AppNotification } from '@delegate/shared';
-import { Activity, Bell, BarChart3, KanbanSquare, Repeat2, Settings, Users } from 'lucide-react';
+import { Activity, Bell, BarChart3, ClipboardCheck, KanbanSquare, Repeat2, Settings, Users } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
@@ -15,6 +15,7 @@ const NAV = [
   { to: '/app/insights', label: 'Insights', icon: BarChart3 },
   { to: '/app/playbooks', label: 'Playbooks', icon: Repeat2 },
   { to: '/app/team', label: 'Team', icon: Users },
+  { to: '/app/audits', label: 'All-time audit', icon: ClipboardCheck, ownerOnly: true },
   { to: '/app/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -62,7 +63,7 @@ export default function AppShell() {
           </p>
         </div>
         <nav className="mt-5 space-y-0.5" aria-label="Workspace">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !n.ownerOnly || role === 'owner').map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -116,8 +117,8 @@ export default function AppShell() {
       </main>
 
       {/* Bottom tabs (mobile) */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-line bg-milk/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Workspace">
-        {NAV.map((n) => (
+      <nav className={cx('fixed inset-x-0 bottom-0 z-30 grid border-t border-line bg-milk/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden', role === 'owner' ? 'grid-cols-7' : 'grid-cols-6')} aria-label="Workspace">
+        {NAV.filter((n) => !n.ownerOnly || role === 'owner').map((n) => (
           <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => cx('flex h-14 flex-col items-center justify-center gap-0.5 text-[10px]', isActive ? 'text-ink' : 'text-faint')}>
             <n.icon className="size-[18px]" strokeWidth={1.8} />
             {n.label}
@@ -168,6 +169,35 @@ function NotificationBell() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const visibleNotifications = (data?.notifications ?? []).filter((n) => n.type !== 'commented');
+  const visibleUnread = visibleNotifications.filter((n) => !n.readAt).length;
+  const seenUnread = useRef<string | null>(null);
+
+  useEffect(() => {
+    const newest = visibleNotifications.find((n) => !n.readAt)?.id ?? null;
+    if (seenUnread.current && newest && newest !== seenUnread.current) {
+      try {
+        const AudioContextClass = window.AudioContext;
+        if (AudioContextClass) {
+          const context = new AudioContextClass();
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(880, context.currentTime);
+          oscillator.frequency.setValueAtTime(1174.66, context.currentTime + 0.09);
+          gain.gain.setValueAtTime(0.0001, context.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.28);
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+          oscillator.start();
+          oscillator.stop(context.currentTime + 0.3);
+          oscillator.onended = () => void context.close();
+        }
+      } catch { /* Audio may be blocked until the user interacts with the page. */ }
+    }
+    if (newest) seenUnread.current = newest;
+  }, [visibleNotifications]);
 
   useEffect(() => {
     if (!open) return;
@@ -181,7 +211,7 @@ function NotificationBell() {
     };
   }, [open]);
 
-  const unread = data?.unread ?? 0;
+  const unread = visibleUnread;
   const go = (n: AppNotification) => {
     setOpen(false);
     if (!n.readAt) markRead.mutate([n.id]);
@@ -223,8 +253,8 @@ function NotificationBell() {
               )}
             </div>
             <ul className="max-h-[60vh] overflow-y-auto">
-              {(data?.notifications ?? []).length === 0 && <li className="px-4 py-8 text-center text-sm text-faint">You're all caught up.</li>}
-              {(data?.notifications ?? []).map((n) => (
+              {visibleNotifications.length === 0 && <li className="px-4 py-8 text-center text-sm text-faint">You're all caught up.</li>}
+              {visibleNotifications.map((n) => (
                 <li key={n.id}>
                   <button onClick={() => go(n)} className={cx('flex w-full gap-3 px-4 py-3 text-left hover:bg-milk', !n.readAt && 'bg-s-approved-soft/40')}>
                     <span className={cx('mt-1.5 size-2 shrink-0 rounded-full', n.readAt ? 'bg-transparent' : 'bg-s-approved')} />

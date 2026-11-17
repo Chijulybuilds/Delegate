@@ -1,5 +1,5 @@
 import { availableActions, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
-import { BellRing, Plus, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { BellRing, MessageCircle, Plus, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -7,7 +7,7 @@ import { useToast } from '../components/Toast';
 import { Avatar, Button, cx, EASE, EmptyState, PriorityTag, Segmented, Select, Spinner, StatusDot } from '../components/ui';
 import { dueLabel, timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
-import { memberName, useBoard, useTransition, useWorkspace, type WorkspaceData } from './data';
+import { memberName, useBoard, useMarkRead, useNotifications, useTransition, useWorkspace, type WorkspaceData } from './data';
 import { NewTaskModal } from './NewTaskModal';
 import { departmentOptions, memberOptions } from './options';
 import { TaskDrawer } from './TaskDrawer';
@@ -48,6 +48,8 @@ const QUICK: Partial<Record<TransitionAction, string>> = {
 export default function BoardPage() {
   const ws = useWorkspace();
   const board = useBoard();
+  const notifications = useNotifications();
+  const markRead = useMarkRead();
   const transition = useTransition();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
@@ -213,9 +215,14 @@ export default function BoardPage() {
                         key={t.id}
                         task={t}
                         ws={ws.data}
+                        commentAlert={notifications.data?.notifications.some((n) => n.type === 'commented' && n.taskId === t.id && !n.readAt) ?? false}
                         aiVerdict={board.data?.aiVerdicts[t.id] ?? null}
                         verifiedBy={board.data?.verified[t.id] ?? null}
-                        onOpen={() => openTask(t.id)}
+                        onOpen={() => {
+                          const commentIds = (notifications.data?.notifications ?? []).filter((n) => n.type === 'commented' && n.taskId === t.id && !n.readAt).map((n) => n.id);
+                          if (commentIds.length) markRead.mutate(commentIds);
+                          openTask(t.id);
+                        }}
                         onQuick={(a) => quick(t, a)}
                         busy={transition.isPending && transition.variables?.id === t.id}
                       />
@@ -250,6 +257,7 @@ export default function BoardPage() {
 function TaskCard({
   task,
   ws,
+  commentAlert,
   aiVerdict,
   verifiedBy,
   onOpen,
@@ -258,6 +266,7 @@ function TaskCard({
 }: {
   task: Task;
   ws: WorkspaceData;
+  commentAlert: boolean;
   aiVerdict: TaskProof['aiVerdict'];
   verifiedBy: ProofSource | null;
   onOpen: () => void;
@@ -305,6 +314,7 @@ function TaskCard({
           {taskRef(task.seq)}
         </span>
         <PriorityTag priority={task.priority} />
+        {commentAlert && <MessageCircle className="size-4 text-s-approved" aria-label="New task discussion" title="New discussion in this task" />}
         {task.source !== 'app' && (
           <span className="rounded-full bg-milk px-1.5 py-0.5 text-[10px] font-medium text-mute" title={`Created from ${SOURCE_LABEL[task.source]}`}>
             {SOURCE_LABEL[task.source]}

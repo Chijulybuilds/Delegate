@@ -112,6 +112,10 @@ export function workspaceRoutes(deps: {
     res.json(await workspace.listBoard(ctxOf(req)));
   });
 
+  r.get('/audits/all-time', async (req, res) => {
+    res.json({ tasks: await workspace.listAllAudited(ctxOf(req)) });
+  });
+
   r.post('/tasks', async (req, res) => {
     const task = await workspace.createTask(ctxOf(req), createTask.parse(req.body));
     res.status(201).json({ task });

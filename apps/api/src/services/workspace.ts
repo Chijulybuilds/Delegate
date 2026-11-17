@@ -201,6 +201,11 @@ export class WorkspaceService {
     return { tasks, aiVerdicts, verified };
   }
 
+  async listAllAudited(ctx: Ctx): Promise<Task[]> {
+    if (ctx.role !== 'owner') throw forbidden('Only the workspace owner can view the all-time audit');
+    return (await this.store.listTasks({ orgId: ctx.orgId, statuses: ['approved'] })).sort((a, b) => (b.approvedAt ?? b.updatedAt).localeCompare(a.approvedAt ?? a.updatedAt));
+  }
+
   async getTaskForCtx(ctx: Pick<Ctx, 'orgId'>, id: string): Promise<Task> {
     const task = await this.store.getTask(id);
     // Same 404 for "missing" and "other tenant" so IDs can't be probed across workspaces.
