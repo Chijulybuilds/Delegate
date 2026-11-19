@@ -237,7 +237,7 @@ const toQuery = (f: Record<string, string | number | undefined>) => {
   return q.toString();
 };
 
-/** Earlier days for the owner's "Waiting on me" board (up to 500 tasks per view). */
+/** Earlier days for the owner's History board (up to 500 tasks per view). */
 export function useHistory(f: TaskFilters, enabled = true, pageSize = 500) {
   return useQuery({
     queryKey: ['history', f, pageSize],
