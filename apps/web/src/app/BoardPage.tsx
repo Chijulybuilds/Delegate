@@ -41,7 +41,7 @@ const FOCUS: Record<Focus, { label: string; match: (me: string, team: boolean) =
   inMotion: { label: 'In motion', match: (me) => (t) => t.assigneeId === me && (t.status === 'in_progress' || t.status === 'blocked') },
   overdue: { label: 'Overdue', match: (me, team) => (t) => isLate(t) && (team || t.assigneeId === me) },
   blocked: { label: 'Blocked', match: () => (t) => t.status === 'blocked' },
-  waitingOnMe: { label: 'Waiting on me', match: (me) => (t) => t.status === 'blocked' && t.waitingOnId === me },
+  waitingOnMe: { label: 'History', match: (me) => (t) => t.status === 'blocked' && t.waitingOnId === me },
   toAudit: { label: 'To audit', match: () => (t) => t.status === 'done' },
 };
 /** The little icon chip on each glance tile (it shows the number instead when there is one). */
@@ -105,7 +105,7 @@ export default function BoardPage() {
     return list;
   }, [board.data, scope, dept, person, meId, focus, isManager]);
   const navigate = useNavigate();
-  // For the owner, "Waiting on me" is everything from earlier days that still needs something.
+  // For the owner, History includes everything from earlier days that still needs action.
   const earlier = (board.data?.earlier.unfinished ?? 0) + (board.data?.earlier.awaitingAudit ?? 0);
   const glance = useMemo(() => {
     const all = board.data?.tasks ?? [];
@@ -196,7 +196,7 @@ export default function BoardPage() {
         })}
       </div>
 
-      {/* Every day starts fresh: earlier work waits for the owner under "Waiting on me". */}
+      {/* Every day starts fresh: earlier work is available to the owner in History. */}
       {isOwner && board.data && earlier > 0 && (
         <Link
           to="/app/waiting"
@@ -214,7 +214,7 @@ export default function BoardPage() {
               .join(' · ')}
           </span>
           <span className="ml-auto inline-flex items-center gap-1 font-medium">
-            Waiting on me <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+            History <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
           </span>
         </Link>
       )}
@@ -289,7 +289,7 @@ export default function BoardPage() {
         <div className="px-4 pb-10 sm:px-8">
           <EmptyState
             title="Your board is empty"
-            body={isOwner ? 'Every day starts with a fresh board; earlier days wait for you under “Waiting on me”. Assign the first task of the day: it lands red on the assignee’s board.' : 'Every day starts with a fresh board. Your tasks for today will appear here.'}
+            body={isOwner ? 'Every day starts with a fresh board; earlier tasks are in History. Assign the first task of the day: it lands red on the assignee’s board.' : 'Every day starts with a fresh board. Your tasks for today will appear here.'}
             action={<Button onClick={() => setCreating(true)}>Create the first task</Button>}
           />
         </div>
@@ -301,7 +301,7 @@ export default function BoardPage() {
   );
 }
 
-/** Open · In motion · Executed · Audited — the board layout shared by Today and "Waiting on me". */
+/** Open · In motion · Executed · Audited — the board layout shared by Today and History. */
 export function BoardLanes({
   tasks,
   ws,

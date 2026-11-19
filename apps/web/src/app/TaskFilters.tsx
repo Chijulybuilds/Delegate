@@ -9,7 +9,7 @@ import type { WorkspaceData } from './data';
 import { memberOptions, priorityOptions } from './options';
 
 /**
- * The filter bar for "Waiting on me" and Audits: a search box (title, DLG number or a person's name),
+ * The filter bar for History and Audits: a search box (title, DLG number or a person's name),
  * person, priority, a date range and extra controls (e.g. time of day). Filters live in the address bar, so a
  * filtered view can be bookmarked, shared, or reached from a link (e.g. "?status=done").
  */
@@ -20,7 +20,7 @@ export interface FilterState {
   priority: string;
   status: string;
   range: DayRange;
-  /** Time of day the task was given out, "HH:MM" (Waiting on me). */
+  /** Time of day the task was given out, "HH:MM" (History). */
   fromTime: string;
   toTime: string;
 }

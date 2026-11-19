@@ -14,7 +14,7 @@ import { FilterBar, isFiltered, toApiFilters, useFilterParams } from './TaskFilt
 import { TaskDrawer } from './TaskDrawer';
 
 /**
- * "Waiting on me" (owner only): every task from earlier days, laid out exactly like Today
+ * History (owner only): every task from earlier days, laid out exactly like Today
  * (Open · In motion · Executed · Audited). The Today board starts empty each morning; this is where
  * yesterday and every day before wait for the owner. Step through days, pick a range, narrow to a
  * time of day, a person or a priority, or search. Tasks open and can still be worked on.
@@ -97,7 +97,7 @@ export default function WaitingPage() {
 
   return (
     <div>
-      <PageHeader title="Waiting on me" subtitle="Every task from earlier days, laid out like Today. Only you, the owner, can see this page." />
+      <PageHeader title="History" subtitle="Every task from earlier days, laid out like Today. Only you, the owner, can see this page." />
 
       <div className="z-20 space-y-3 border-b border-line bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0">
         {/* The day: step back and forth, or pick a range */}
