@@ -52,7 +52,7 @@ export function DangerZone({ members, orgName }: { members: Member[] | null; org
     <Card ref={card} className={cx('p-6 transition-shadow duration-700 lg:col-span-2', flash && 'ring-2 ring-s-open/60 ring-offset-2 ring-offset-milk')} data-testid="danger-zone">
       <div className="flex items-center gap-2">
         <ShieldAlert className="size-[18px] text-s-open-ink" />
-        <h2 className="text-[15px] font-medium">Leave or delete</h2>
+        <h2 className="text-[0.9375rem] font-medium">Leave or delete</h2>
       </div>
       <div className="mt-4 divide-y divide-line">
         {members && orgName && (

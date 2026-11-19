@@ -20,7 +20,7 @@ function Block({ title, tone, rows, empty, render }: { title: string; tone: stri
       ) : (
         <ul className="mt-2 divide-y divide-line">
           {rows.map((r) => (
-            <li key={r.task.id} className="py-2.5 text-[14.5px]">
+            <li key={r.task.id} className="py-2.5 text-[0.9062rem]">
               <span className="font-medium">{r.task.title}</span> <span className="text-mute">— {r.assignee}</span>
               {render?.(r)}
             </li>

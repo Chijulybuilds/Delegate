@@ -1,0 +1,84 @@
+import { expect, test } from '@playwright/test';
+import { card, choose, loginAs, resetDemo } from './helpers';
+
+test.describe('Waiting on me and Audits', () => {
+  test.beforeEach(async ({ request }) => {
+    await resetDemo(request);
+  });
+
+  test('earlier days wait on the owner, laid out like Today, by day and time of day', async ({ page }) => {
+    // Staff don't get earlier days at all.
+    await loginAs(page, 'demo-tunde');
+    await expect(page.getByTestId('nav-waiting')).toHaveCount(0);
+    await page.goto('/app/history'); // old links lead to the new page, which sends staff back
+    await expect(page).toHaveURL(/\/app$/);
+
+    await loginAs(page, 'demo-ada');
+    await expect(page.getByTestId('earlier-days')).toContainText('unfinished');
+    await page.getByTestId('glance-waitingOnMe').click();
+    await expect(page).toHaveURL(/\/app\/waiting/);
+    await expect(page.getByRole('heading', { name: 'Waiting on me' })).toBeVisible();
+
+    // The same four lanes as Today, holding every earlier task.
+    for (const id of ['open', 'active', 'done', 'approved']) await expect(page.getByTestId(`lane-${id}`)).toBeVisible();
+    await expect(page.getByTestId('lane-count-approved')).toHaveText(/^1[1-9]$|^[2-9]\d$/);
+    await expect(card(page, 'Finalize Q4 board deck')).toHaveCount(0); // today's work stays on Today
+    await expect(page.getByTestId('task-day').first()).toBeVisible(); // several days: each card shows its day
+
+    // Step to yesterday, then the day before.
+    await page.getByTestId('day-prev').click();
+    await expect(page.getByTestId('day-title')).toContainText('Yesterday');
+    await expect(page.getByTestId('lane-active').locator(card(page, 'Integrate SSO for enterprise pilot'))).toBeVisible();
+    await expect(card(page, 'Renew domain and SSL certificates')).toHaveCount(0);
+    await page.getByTestId('day-prev').click();
+    await expect(page.getByTestId('day-title')).not.toContainText('Yesterday');
+    await expect(page.getByTestId('lane-open').locator(card(page, 'Patch dependency CVE in image service'))).toBeVisible();
+    await page.getByTestId('day-all').click();
+    await expect(page.getByTestId('day-title')).toHaveText('All earlier days');
+
+    // Time of day (workspace time): the demo hands work out around 08:00.
+    await choose(page, 'waiting-filters-time', 'afternoon');
+    await expect(page.getByTestId('task-card')).toHaveCount(0);
+    await choose(page, 'waiting-filters-time', 'morning');
+    await expect(page.getByTestId('task-card').first()).toBeVisible();
+
+    // Search, then open a task: it still works from here.
+    await page.getByTestId('waiting-filters-search').fill('CVE');
+    await expect(page.getByTestId('task-card')).toHaveCount(1);
+    await card(page, 'Patch dependency CVE in image service').click();
+    await expect(page.getByTestId('drawer-title')).toHaveText('Patch dependency CVE in image service');
+  });
+
+  test('Audits: owner only, searchable, filterable, downloadable', async ({ page }) => {
+    await loginAs(page, 'demo-tunde');
+    await expect(page.getByTestId('nav-audits')).toHaveCount(0);
+    await page.goto('/app/audits');
+    await expect(page).toHaveURL(/\/app$/); // staff are sent back to their board
+
+    await loginAs(page, 'demo-ada');
+    await page.getByTestId('nav-audits').click();
+    await expect(page.getByRole('heading', { name: 'Audits' })).toBeVisible();
+    await expect(page.getByTestId('audits-total')).toHaveText(/^\d+$/);
+    const total = Number(await page.getByTestId('audits-total').textContent());
+    expect(total).toBeGreaterThanOrEqual(11);
+
+    const rows = page.getByTestId('audit-row');
+    await choose(page, 'audit-filters-priority', 'urgent');
+    await expect(rows.first()).toBeVisible();
+    await expect(rows.filter({ hasNotText: /urgent/i })).toHaveCount(0);
+
+    await page.getByTestId('audit-filters-reset').click();
+    await choose(page, 'audit-filters-person', 'demo-sara');
+    await expect(rows.first()).toBeVisible();
+    await expect(rows.filter({ hasNotText: 'Sara Idowu' })).toHaveCount(0);
+
+    await page.getByTestId('audit-filters-search').fill('walkthrough');
+    await expect(rows).toHaveCount(1);
+    const download = page.waitForEvent('download');
+    await page.getByTestId('audits-download').click();
+    expect((await download).suggestedFilename()).toMatch(/^delegate-audits-.*\.csv$/);
+
+    await rows.first().click();
+    await expect(page.getByTestId('drawer-title')).toHaveText('Record product walkthrough video');
+  });
+});

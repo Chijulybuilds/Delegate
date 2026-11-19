@@ -306,8 +306,8 @@ export function DateTimePicker({
                   className="rounded-xl border border-line bg-milk px-2.5 py-2 text-left transition-colors hover:border-ink/40"
                   data-testid={`${testId}-quick-${p.id}`}
                 >
-                  <span className="block text-[13px] font-medium">{p.label}</span>
-                  <span className="block truncate text-[11px] text-mute">{formatDue(p.date)}</span>
+                  <span className="block text-[0.8125rem] font-medium">{p.label}</span>
+                  <span className="block truncate text-[0.6875rem] text-mute">{formatDue(p.date)}</span>
                 </motion.button>
               ))}
             </div>
@@ -356,7 +356,7 @@ export function DateTimePicker({
                     })}
                   </div>
                 </div>
-                <div className="mt-2 grid grid-cols-7 text-center text-[11px] font-medium uppercase tracking-[0.06em] text-faint">
+                <div className="mt-2 grid grid-cols-7 text-center text-[0.6875rem] font-medium uppercase tracking-[0.06em] text-faint">
                   {WEEKDAYS.map((w) => (
                     <span key={w} className="py-1">
                       {w}
@@ -393,7 +393,7 @@ export function DateTimePicker({
                             data-day={dayKey(d)}
                             onClick={() => pickDay(d)}
                             className={cx(
-                              'relative mx-auto grid size-9 place-items-center rounded-full text-[13px] tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/40',
+                              'relative mx-auto grid size-9 place-items-center rounded-full text-[0.8125rem] tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/40',
                               selected ? 'font-semibold text-milk' : inMonth ? (past ? 'text-faint hover:bg-ink/5' : 'text-ink hover:bg-ink/[0.07]') : 'text-faint/50 hover:bg-ink/5',
                             )}
                           >

@@ -78,7 +78,7 @@ Demo data lives in memory and resets when the API restarts.
    1. [`supabase/migrations/20261112000000_init.sql`](../supabase/migrations/20261112000000_init.sql): workspaces, tasks, the append-only ledger, Row Level Security, the `proofs` storage bucket, and Realtime.
    2. [`supabase/migrations/20261113000000_saas.sql`](../supabase/migrations/20261113000000_saas.sql): task numbers (`DLG-12`), subscriptions, integrations, notifications, playbooks, escalation fields and the webhook de-duplication table.
    3. [`supabase/migrations/20261114000000_accounts.sql`](../supabase/migrations/20261114000000_accounts.sql): **Leave workspace / Delete account** (erases a deleted person's name from the history) and a security fix that stops browsers from calling the workspace-delete function.
-   4. [`supabase/migrations/20261119000000_private_tasks.sql`](../supabase/migrations/20261119000000_private_tasks.sql): **private tasks**. The owner sees every task; everyone else only the tasks given to them, the ones they handed out, and a task that's blocked waiting on them. Enforced in the database too, so nobody can read around the app.
+   4. [`supabase/migrations/20261119000000_private_tasks.sql`](../supabase/migrations/20261119000000_private_tasks.sql): **private tasks and owner-only invite codes**. The owner sees every task; everyone else only the tasks given to them, the ones they handed out, and a task that's blocked waiting on them. Only the owner can see or renew the invite code. Enforced in the database too, so nobody can read around the app. (If you ran an earlier copy of this file, run it again: it's safe.)
 
    *(With the Supabase CLI instead: `supabase link --project-ref <ref>` then `supabase db push`.)*
 3. Open **Project Settings → API Keys** and copy:

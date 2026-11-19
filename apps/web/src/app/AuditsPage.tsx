@@ -115,7 +115,7 @@ export default function AuditsPage() {
                         data-task-title={r.task.title}
                       >
                         <td className="max-w-[340px] px-4 py-3">
-                          <span className="font-mono text-[11px] text-faint">{taskRef(r.task.seq)}</span>
+                          <span className="font-mono text-[0.6875rem] text-faint">{taskRef(r.task.seq)}</span>
                           <p className="truncate font-medium">{r.task.title}</p>
                           {r.departmentName && <p className="text-xs text-faint">{r.departmentName}</p>}
                         </td>
@@ -145,9 +145,9 @@ export default function AuditsPage() {
                   <button onClick={() => openTask(r.task.id)} className="w-full rounded-2xl border border-line bg-paper p-3.5 text-left shadow-[var(--shadow-card)]" data-testid="audit-card">
                     <div className="flex items-center gap-2">
                       <ShieldCheck className="size-3.5 text-s-approved-ink" />
-                      <span className="font-mono text-[11px] text-faint">{taskRef(r.task.seq)}</span>
+                      <span className="font-mono text-[0.6875rem] text-faint">{taskRef(r.task.seq)}</span>
                       <PriorityTag priority={r.task.priority} />
-                      <span className="ml-auto text-[11px] text-faint">{when(r)}</span>
+                      <span className="ml-auto text-[0.6875rem] text-faint">{when(r)}</span>
                     </div>
                     <p className="mt-1.5 font-medium">{r.task.title}</p>
                     <p className="mt-1 text-xs text-mute">

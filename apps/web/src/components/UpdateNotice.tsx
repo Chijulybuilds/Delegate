@@ -70,7 +70,7 @@ export function UpdateNotice() {
             <span>Delegate has been updated.</span>
             <button
               onClick={() => window.location.reload()}
-              className="inline-flex items-center gap-1.5 rounded-full bg-milk px-3.5 py-1.5 text-[13px] font-medium text-ink transition-transform active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-full bg-milk px-3.5 py-1.5 text-[0.8125rem] font-medium text-ink transition-transform active:scale-95"
               data-testid="update-refresh"
             >
               <RefreshCw className="size-3.5" /> Refresh

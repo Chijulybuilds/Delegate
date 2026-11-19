@@ -31,7 +31,7 @@ export function Logo({ className }: { className?: string }) {
   return (
     <span className={cx('inline-flex items-center gap-2 text-ink', className)}>
       <LogoMark className="size-7" />
-      <span className="text-[19px] font-semibold tracking-[-0.04em]">Delegate</span>
+      <span className="text-[1.1875rem] font-semibold tracking-[-0.04em]">Delegate</span>
     </span>
   );
 }
@@ -49,9 +49,9 @@ const variants: Record<Variant, string> = {
   soft: 'bg-paper text-ink border border-line hover:border-line-2 shadow-[var(--shadow-card)]',
 };
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3.5 text-[13px] gap-1.5',
+  sm: 'h-8 px-3.5 text-[0.8125rem] gap-1.5',
   md: 'h-10 px-5 text-sm gap-2',
-  lg: 'h-12 px-7 text-[15px] gap-2',
+  lg: 'h-12 px-7 text-[0.9375rem] gap-2',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -86,7 +86,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 
 export function Pill({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className={cx('inline-flex h-7 items-center rounded-full border border-ink/70 px-3 text-[13px] text-ink-2', className)}>
+    <span className={cx('inline-flex h-7 items-center rounded-full border border-ink/70 px-3 text-[0.8125rem] text-ink-2', className)}>
       {children}
     </span>
   );
@@ -134,7 +134,7 @@ const priorityStyle: Record<TaskPriority, string> = {
 
 export function PriorityTag({ priority }: { priority: TaskPriority }) {
   return (
-    <span className={cx('inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.06em]', priorityStyle[priority])}>
+    <span className={cx('inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[0.6875rem] font-medium uppercase tracking-[0.06em]', priorityStyle[priority])}>
       {priority === 'urgent' && <span className="size-1.5 rounded-full bg-s-open" />}
       {priority}
     </span>
@@ -181,7 +181,7 @@ export { DateTimePicker, TimePicker } from './DateTimePicker';
 export function Field({ label, hint, children, htmlFor }: { label: string; hint?: string; children: ReactNode; htmlFor?: string }) {
   return (
     <label className="block space-y-1.5" htmlFor={htmlFor}>
-      <span className="text-[13px] font-medium text-ink-2">{label}</span>
+      <span className="text-[0.8125rem] font-medium text-ink-2">{label}</span>
       {children}
       {hint && <span className="block text-xs text-faint">{hint}</span>}
     </label>
@@ -326,7 +326,7 @@ export function Segmented<T extends string>({
           role="tab"
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cx('relative z-10 h-7 rounded-full px-3 text-[13px] font-medium transition-colors', value === o.value ? 'text-milk' : 'text-mute hover:text-ink')}
+          className={cx('relative z-10 h-7 rounded-full px-3 text-[0.8125rem] font-medium transition-colors', value === o.value ? 'text-milk' : 'text-mute hover:text-ink')}
         >
           {value === o.value && (
             <motion.span layoutId={`seg-${options.map((x) => x.value).join('')}`} className="absolute inset-0 -z-10 rounded-full bg-ink" transition={{ duration: 0.35, ease: EASE }} />

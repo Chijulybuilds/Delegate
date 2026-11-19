@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 
 @theme static {
+  /* Spacing is in px so it stays put when the dashboard's text size goes up (see html[data-scope]). */
+  --spacing: 4px;
   --font-sans: 'Inter Tight Variable', 'Inter Tight', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --color-milk: #f3f3f1;
@@ -46,6 +48,10 @@
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
   --shadow-card: 0 1px 0 rgb(0 0 0 / 0.02), 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.08);
   --shadow-float: 0 24px 60px -24px rgb(0 0 0 / 0.25), 0 2px 6px rgb(0 0 0 / 0.04);
+  /* The four "at a glance" tiles on the board, and the icon chips inside them. */
+  --shadow-tile: 0 1px 2px rgb(0 0 0 / 0.05), 0 12px 28px -12px rgb(0 0 0 / 0.22);
+  --shadow-tile-hover: 0 2px 4px rgb(0 0 0 / 0.06), 0 18px 36px -14px rgb(0 0 0 / 0.3);
+  --shadow-chip: 0 1px 1px rgb(0 0 0 / 0.06), 0 5px 12px -3px rgb(0 0 0 / 0.2);
   --shadow-pop: 0 18px 44px -18px rgb(0 0 0 / 0.22), 0 4px 12px -6px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.02);
 }
 
@@ -95,6 +101,9 @@ html[data-theme='dark'] {
 
   --shadow-card: 0 1px 0 rgb(255 255 255 / 0.02) inset, 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.5);
   --shadow-float: 0 24px 60px -24px rgb(0 0 0 / 0.75), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-tile: 0 1px 2px rgb(0 0 0 / 0.5), 0 14px 30px -12px rgb(0 0 0 / 0.75);
+  --shadow-tile-hover: 0 2px 4px rgb(0 0 0 / 0.55), 0 20px 40px -14px rgb(0 0 0 / 0.85);
+  --shadow-chip: 0 1px 1px rgb(0 0 0 / 0.5), 0 5px 12px -3px rgb(0 0 0 / 0.65);
   --shadow-pop: 0 18px 44px -16px rgb(0 0 0 / 0.7), 0 4px 12px -6px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.03);
 }
 
@@ -176,4 +185,10 @@ html.theme-switching *::after {
   50% {
     opacity: 0;
   }
+}
+
+/* The dashboard reads a little larger than the marketing pages: every rem-based text size grows
+   about 6% (16px → 17px base), while spacing (px) keeps the layout as it is. */
+html[data-scope='app'] {
+  font-size: 106.25%;
 }

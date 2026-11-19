@@ -38,7 +38,7 @@ export function WorkspaceTab({ ws }: { ws: WorkspaceData }) {
 
   return (
     <Card className="max-w-xl p-6">
-      <h2 className="text-[15px] font-medium">Workspace</h2>
+      <h2 className="text-[0.9375rem] font-medium">Workspace</h2>
       <form onSubmit={save} className="mt-5 space-y-4">
         <Field label="Name">
           <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isOwner} minLength={2} maxLength={60} />
@@ -46,9 +46,11 @@ export function WorkspaceTab({ ws }: { ws: WorkspaceData }) {
         <Field label="Time zone" hint="Due times, playbooks and the morning brief follow this zone.">
           <Select value={timezone} onChange={setTimezone} options={zoneOptions} disabled={ws.me.role === 'member'} aria-label="Time zone" />
         </Field>
-        <Field label="Invite code" hint="Share it with teammates — manage it on the Team page.">
-          <Input value={ws.org.inviteCode} readOnly className="font-mono tracking-wider" />
-        </Field>
+        {isOwner && (
+          <Field label="Invite code" hint="Only you can see it. Share it with new teammates; make a new one on the Team page.">
+            <Input value={ws.org.inviteCode} readOnly className="font-mono tracking-wider" data-testid="settings-invite-code" />
+          </Field>
+        )}
         {ws.me.role !== 'member' && (
           <Button type="submit" loading={busy}>
             Save changes

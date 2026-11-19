@@ -25,6 +25,7 @@ export default function TeamPage() {
   if (isLoading || !ws) return <Spinner className="m-8" />;
   const isManager = isManagerRole(ws.me.role);
   const isOwner = ws.me.role === 'owner';
+  const owner = ws.members.find((m) => m.role === 'owner');
   const refresh = () => qc.invalidateQueries({ queryKey: ['workspace'] });
 
   const patchMember = async (userId: string, patch: Record<string, unknown>) => {
@@ -133,7 +134,7 @@ export default function TeamPage() {
                     aria-label={`Role for ${m.fullName}`}
                   />
                 ) : (
-                  <span className="rounded-full border border-line px-3 py-1 text-[13px] text-ink-2">{roleLabel[m.role]}</span>
+                  <span className="rounded-full border border-line px-3 py-1 text-[0.8125rem] text-ink-2">{roleLabel[m.role]}</span>
                 )}
                 {isManager && (
                   <span className="grid size-9 place-items-center">
@@ -156,32 +157,39 @@ export default function TeamPage() {
         </Card>
 
         <div className="space-y-4">
-          <Card className="p-5">
-            <h2 className="text-[15px] font-medium">Invite your team</h2>
-            <p className="mt-1 text-sm text-mute">Teammates sign in (Google or email), then enter this code to join as staff.</p>
-            <div className="mt-4 flex items-center gap-2">
-              <code className="flex-1 rounded-xl border border-line bg-milk px-3.5 py-2.5 font-mono text-[15px] tracking-wider" data-testid="invite-code">
-                {ws.org.inviteCode}
-              </code>
-              <Button
-                variant="outline"
-                size="md"
-                className="size-11 p-0"
-                aria-label="Copy invite code"
-                onClick={() => navigator.clipboard?.writeText(ws.org.inviteCode).then(() => toast.success('Invite code copied'))}
-              >
-                <Copy className="size-4" />
-              </Button>
-            </div>
-            {isManager && (
-              <button onClick={regenerate} className="mt-3 inline-flex items-center gap-1.5 text-xs text-mute hover:text-ink">
+          {isOwner ? (
+            <Card className="p-5">
+              <h2 className="text-[0.9375rem] font-medium">Invite your team</h2>
+              <p className="mt-1 text-sm text-mute">Teammates sign in (Google or email), then enter this code to join as staff. Only you can see it.</p>
+              <div className="mt-4 flex items-center gap-2">
+                <code className="flex-1 rounded-xl border border-line bg-milk px-3.5 py-2.5 font-mono text-[0.9375rem] tracking-wider" data-testid="invite-code">
+                  {ws.org.inviteCode}
+                </code>
+                <Button
+                  variant="outline"
+                  size="md"
+                  className="size-11 p-0"
+                  aria-label="Copy invite code"
+                  onClick={() => navigator.clipboard?.writeText(ws.org.inviteCode).then(() => toast.success('Invite code copied'))}
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </div>
+              <button onClick={regenerate} className="mt-3 inline-flex items-center gap-1.5 text-xs text-mute hover:text-ink" data-testid="regenerate-invite">
                 <RefreshCw className="size-3.5" /> Generate a new code
               </button>
-            )}
-          </Card>
+            </Card>
+          ) : (
+            <Card className="p-5" data-testid="invite-owner-only">
+              <h2 className="text-[0.9375rem] font-medium">Adding someone?</h2>
+              <p className="mt-1 text-sm text-mute">
+                Only the workspace owner{owner ? <>, <span className="font-medium text-ink">{owner.fullName}</span>,</> : ''} can invite people. Ask them to share the invite code.
+              </p>
+            </Card>
+          )}
 
           <Card className="p-5">
-            <h2 className="text-[15px] font-medium">Departments</h2>
+            <h2 className="text-[0.9375rem] font-medium">Departments</h2>
             <p className="mt-1 text-sm text-mute">Swimlanes for filtering the board without losing the global rhythm.</p>
             <ul className="mt-4 space-y-2">
               {ws.departments.map((d) => (

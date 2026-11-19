@@ -102,11 +102,11 @@ export function UserMenu({ ws, variant }: { ws: WorkspaceData; variant: 'sidebar
               <p className="truncate text-sm font-medium">{me.profile.fullName}</p>
               <p className="truncate text-xs text-mute">{me.profile.email}</p>
             </div>
-            <span className="shrink-0 rounded-full bg-milk-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">{ROLE[ws.me.role]}</span>
+            <span className="shrink-0 rounded-full bg-milk-2 px-2 py-0.5 text-[0.6875rem] font-medium text-ink-2">{ROLE[ws.me.role]}</span>
           </div>
 
           <div className="mx-1 rounded-xl bg-milk p-2.5">
-            <p className="px-0.5 text-[11px] font-medium uppercase tracking-[0.14em] text-faint">Appearance</p>
+            <p className="px-0.5 text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-faint">Appearance</p>
             <div className="mt-2 grid grid-cols-3 gap-1 rounded-xl bg-milk-2 p-1" role="group" aria-label="Theme">
               {THEMES.map((t) => {
                 const on = pref === t.value;
@@ -117,7 +117,7 @@ export function UserMenu({ ws, variant }: { ws: WorkspaceData; variant: 'sidebar
                     aria-checked={on}
                     onClick={(e) => setThemePref(t.value, { x: e.clientX, y: e.clientY })}
                     whileTap={{ scale: 0.94 }}
-                    className={cx('relative flex flex-col items-center gap-1 rounded-lg py-2 text-[12px] font-medium outline-none transition-colors', on ? 'text-ink' : 'text-mute hover:text-ink')}
+                    className={cx('relative flex flex-col items-center gap-1 rounded-lg py-2 text-[0.75rem] font-medium outline-none transition-colors', on ? 'text-ink' : 'text-mute hover:text-ink')}
                     data-testid={`theme-${t.value}`}
                   >
                     {on && <motion.span layoutId={`${uid}-theme`} className="absolute inset-0 rounded-lg bg-paper shadow-[var(--shadow-card)]" transition={{ type: 'spring', stiffness: 520, damping: 34 }} />}

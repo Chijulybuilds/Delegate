@@ -27,6 +27,8 @@ export const resolveTheme = (p: ThemePref): 'light' | 'dark' => (p === 'system' 
 
 function apply() {
   const root = document.documentElement;
+  if (inDashboard) root.setAttribute('data-scope', 'app');
+  else root.removeAttribute('data-scope');
   if (inDashboard && resolveTheme(pref) === 'dark') root.setAttribute('data-theme', 'dark');
   else root.removeAttribute('data-theme');
 }

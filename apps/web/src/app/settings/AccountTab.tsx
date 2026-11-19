@@ -40,7 +40,7 @@ export function AccountTab({ ws }: { ws: WorkspaceData }) {
   return (
     <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
       <Card className="p-6">
-        <h2 className="text-[15px] font-medium">Your account</h2>
+        <h2 className="text-[0.9375rem] font-medium">Your account</h2>
         <div className="mt-5 flex items-center gap-3">
           <Avatar name={me.profile.fullName} src={me.profile.avatarUrl} size={48} />
           <div>
@@ -59,7 +59,7 @@ export function AccountTab({ ws }: { ws: WorkspaceData }) {
       <Card className="p-6" data-testid="whatsapp-link">
         <div className="flex items-center gap-2">
           <MessageCircle className="size-[18px]" />
-          <h2 className="text-[15px] font-medium">WhatsApp</h2>
+          <h2 className="text-[0.9375rem] font-medium">WhatsApp</h2>
         </div>
         {phone ? (
           <>
@@ -79,7 +79,7 @@ export function AccountTab({ ws }: { ws: WorkspaceData }) {
             {code ? (
               <div className="mt-4 space-y-3">
                 <p className="text-sm">
-                  Send <code className="rounded bg-milk px-1.5 py-0.5 font-mono text-[13px]">LINK {code.code}</code> {number ? <>to <span className="font-medium">+{number}</span></> : 'to the Delegate business number'} on WhatsApp. It expires in 30 minutes.
+                  Send <code className="rounded bg-milk px-1.5 py-0.5 font-mono text-[0.8125rem]">LINK {code.code}</code> {number ? <>to <span className="font-medium">+{number}</span></> : 'to the Delegate business number'} on WhatsApp. It expires in 30 minutes.
                 </p>
                 {code.link && (
                   <a href={code.link} target="_blank" rel="noreferrer">

@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
-import type { AppConfig as PublicConfig, MeResponse } from '@delegate/shared';
+import { orgForRole, type AppConfig as PublicConfig, type MeResponse } from '@delegate/shared';
 import { requireUser } from '../auth/middleware.js';
 import { signDemoToken, type UserTokenVerifier } from '../auth/tokens.js';
 import type { AppConfig } from '../config.js';
@@ -25,7 +25,8 @@ export function publicRoutes(deps: {
 }) {
   const { config, store, verifier, workspace } = deps;
   const r = Router();
-  const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false });
+  // Sign-in and joining: 60 tries per 15 minutes per address in production; roomy in development and tests.
+  const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProduction ? 60 : 2000, standardHeaders: 'draft-8', legacyHeaders: false });
 
   r.get('/health', async (_req, res) => {
     const issue = await deps.setupIssue();
@@ -99,7 +100,7 @@ export function publicRoutes(deps: {
     const org = m ? await store.getOrg(m.orgId) : null;
     const body: MeResponse = {
       profile,
-      membership: m && org ? { org, role: m.role, departmentId: m.departmentId } : null,
+      membership: m && org ? { org: orgForRole(org, m.role), role: m.role, departmentId: m.departmentId } : null,
     };
     res.json(body);
   });
@@ -115,7 +116,7 @@ export function publicRoutes(deps: {
   r.post('/onboarding/join', authed, authLimiter, async (req, res) => {
     const body = z.object({ code: z.string().trim().min(4).max(32) }).parse(req.body);
     const org = await workspace.joinWorkspace(req.user!, body.code);
-    res.status(201).json({ org });
+    res.status(201).json({ org: orgForRole(org, 'member') });
   });
 
   /* ------------------------ Leave workspace / delete account ------------------------ */

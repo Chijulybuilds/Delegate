@@ -173,6 +173,7 @@ export class WorkspaceService {
   async updateOrg(ctx: Ctx, patch: { name?: string; timezone?: string; regenerateInvite?: boolean; settings?: Partial<Organization['settings']> }) {
     if (!isManagerRole(ctx.role)) throw forbidden('Only managers can change workspace settings');
     if (patch.name !== undefined && ctx.role !== 'owner') throw forbidden('Only the owner can rename the workspace');
+    if (patch.regenerateInvite && ctx.role !== 'owner') throw forbidden('Only the workspace owner can manage the invite code');
     const org = await this.store.getOrg(ctx.orgId);
     if (!org) throw notFound('Workspace not found');
     if (patch.settings?.escalation?.enabled) await this.billing.require(ctx.orgId, 'escalations', 'Escalation alerts');
@@ -220,10 +221,14 @@ export class WorkspaceService {
       aiVerdicts,
       verified,
       day: { start: dayStart, timezone },
-      earlier: {
-        unfinished: before.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked').length,
-        awaitingAudit: isManagerRole(ctx.role) ? before.filter((t) => t.status === 'done').length : 0,
-      },
+      // Earlier days belong to the owner's "Waiting on me" page.
+      earlier:
+        ctx.role === 'owner'
+          ? {
+              unfinished: before.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked').length,
+              awaitingAudit: before.filter((t) => t.status === 'done').length,
+            }
+          : { unfinished: 0, awaitingAudit: 0 },
     };
   }
 
@@ -269,12 +274,16 @@ export class WorkspaceService {
     }));
   }
 
-  /** Search box + person + priority + status + date range, shared by History and Audits. */
-  private filterRows(rows: AuditRow[], f: TaskFilters, dateOf: (t: Task) => string) {
+  /** Search box + person + priority + status + date range (+ time of day), shared by Waiting on me and Audits. */
+  private filterRows(rows: AuditRow[], f: TaskFilters, dateOf: (t: Task) => string, timezone = 'UTC') {
     const q = f.q?.trim().toLowerCase().replace(/^#/, '');
     const from = f.from ? Date.parse(f.from) : null;
     const to = f.to ? Date.parse(f.to) : null;
     const statuses = f.status ? (LANES.find((l) => l.id === f.status)?.statuses as readonly string[] | undefined) : undefined;
+    const minutes = (hhmm?: string) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
+    const fromMin = minutes(f.fromTime);
+    const toMin = minutes(f.toTime);
+    const clock = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     return rows
       .filter(({ task: t, assigneeName, creatorName, auditorName }) => {
         if (f.assigneeId && t.assigneeId !== f.assigneeId) return false;
@@ -283,6 +292,11 @@ export class WorkspaceService {
         const at = Date.parse(dateOf(t));
         if (from !== null && at < from) return false;
         if (to !== null && at >= to) return false;
+        if (fromMin !== null || toMin !== null) {
+          const local = minutes(clock.format(at)) ?? 0;
+          if (fromMin !== null && local < fromMin) return false;
+          if (toMin !== null && local >= toMin) return false;
+        }
         if (q) {
           const hay = `${taskRef(t.seq)} ${t.seq} ${t.title} ${t.description} ${assigneeName} ${creatorName} ${auditorName ?? ''}`.toLowerCase();
           if (!q.split(/\s+/).every((word) => hay.includes(word))) return false;
@@ -301,13 +315,14 @@ export class WorkspaceService {
     return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
   }
 
-  /** Earlier days: every task given out before today that the viewer can see, newest day first. */
+  /** Earlier days (the owner's "Waiting on me" page): every task given out before today, newest first. */
   async history(ctx: Ctx, f: TaskFilters, page = 1, pageSize = 60): Promise<HistoryResponse> {
+    if (ctx.role !== 'owner') throw forbidden('Only the workspace owner can see earlier days');
     const org = await this.store.getOrg(ctx.orgId);
     const timezone = org?.timezone || 'UTC';
     const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
     const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => t.createdAt < dayStart && canSeeTask(ctx, t));
-    const rows = this.filterRows(await this.describeTasks(ctx.orgId, tasks), f, (t) => t.createdAt);
+    const rows = this.filterRows(await this.describeTasks(ctx.orgId, tasks), f, (t) => t.createdAt, timezone);
     const start = (page - 1) * pageSize;
     return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize, timezone };
   }

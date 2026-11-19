@@ -71,7 +71,7 @@ export default function PlaybooksPage() {
                 <Repeat2 className="size-[18px]" />
               </span>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-[16px] font-medium tracking-[-0.02em]">{pb.name}</h2>
+                <h2 className="truncate text-[1rem] font-medium tracking-[-0.02em]">{pb.name}</h2>
                 <p className="text-sm text-mute">
                   {describeCadence(pb)} · {pb.items.length} task{pb.items.length === 1 ? '' : 's'}
                   {!pb.active && ' · paused'}
@@ -193,7 +193,7 @@ function PlaybookEditor({ ws, playbook, onClose, onSaved }: { ws: WorkspaceData;
         </div>
 
         <div>
-          <p className="mb-2 text-[13px] font-medium text-ink-2">Tasks it creates</p>
+          <p className="mb-2 text-[0.8125rem] font-medium text-ink-2">Tasks it creates</p>
           <div className="space-y-2">
             {draft.items.map((item, i) => (
               <div key={i} className="space-y-2 rounded-2xl border border-line bg-milk p-3">

@@ -97,6 +97,21 @@ test.describe('Collaboration', () => {
     await expect(page.getByTestId('chat-list')).toContainText('Looks sharp — send it to the board by five.');
   });
 
+  test('only the owner sees the invite code', async ({ page }) => {
+    await loginAs(page, 'demo-kemi'); // a manager
+    await page.getByRole('link', { name: 'Team', exact: true }).click();
+    await expect(page.getByTestId('invite-owner-only')).toContainText('Ada Okafor');
+    await expect(page.getByTestId('invite-code')).toHaveCount(0);
+    await expect(page.getByText('LUMEN-2026')).toHaveCount(0);
+    await page.goto('/app/settings?tab=workspace');
+    await expect(page.getByTestId('settings-invite-code')).toHaveCount(0);
+
+    await loginAs(page, 'demo-ada');
+    await page.getByRole('link', { name: 'Team', exact: true }).click();
+    await expect(page.getByTestId('invite-code')).toHaveText('LUMEN-2026');
+    await expect(page.getByTestId('regenerate-invite')).toBeVisible();
+  });
+
   test('staff see only their own work; the owner sees everyone and can filter by person', async ({ page }) => {
     await loginAs(page, 'demo-tunde');
     await expect(page.getByTestId('task-card').first()).toBeVisible();

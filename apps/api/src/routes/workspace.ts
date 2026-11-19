@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { MEMBER_ROLES, TASK_PRIORITIES, taskRef, type TransitionAction } from '@delegate/shared';
+import { MEMBER_ROLES, orgForRole, TASK_PRIORITIES, taskRef, type TransitionAction } from '@delegate/shared';
 import { badRequest } from '../lib/errors.js';
 import { standupToText, type MetricsService } from '../services/metrics.js';
 import type { AccountService } from '../services/account.js';
@@ -60,7 +60,7 @@ export function workspaceRoutes(deps: {
   r.get('/workspace', async (req, res) => {
     const { orgId, org, role, departmentId } = req.member!;
     const [members, departments, entitlements] = await Promise.all([store.listMembers(orgId), store.listDepartments(orgId), billing.entitlements(orgId)]);
-    res.json({ org, members, departments, entitlements, me: { userId: req.user!.id, role, departmentId } });
+    res.json({ org: orgForRole(org, role), members, departments, entitlements, me: { userId: req.user!.id, role, departmentId } });
   });
 
   r.patch('/workspace', async (req, res) => {
@@ -85,7 +85,7 @@ export function workspaceRoutes(deps: {
           .optional(),
       })
       .parse(req.body);
-    res.json({ org: await workspace.updateOrg(ctxOf(req), body as Parameters<WorkspaceService['updateOrg']>[1]) });
+    res.json({ org: orgForRole(await workspace.updateOrg(ctxOf(req), body as Parameters<WorkspaceService['updateOrg']>[1]), req.member!.role) });
   });
 
   r.patch('/members/:userId', async (req, res) => {
@@ -202,13 +202,20 @@ export function workspaceRoutes(deps: {
     res.send(`\uFEFF${lines.map((l) => l.map(cell).join(',')).join('\r\n')}`);
   });
 
-  /* ------------------------------ History (earlier days) ------------------------------ */
+  /* ------------------------------ Earlier days (owner only) ------------------------------ */
 
+  const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM');
   r.get('/history', async (req, res) => {
-    const { page, ...f } = auditFilters
-      .extend({ status: z.enum(['open', 'active', 'done', 'approved']).optional(), page: z.coerce.number().int().min(1).max(10_000).default(1) })
+    const { page, pageSize, ...f } = auditFilters
+      .extend({
+        status: z.enum(['open', 'active', 'done', 'approved']).optional(),
+        fromTime: hhmm.optional(),
+        toTime: hhmm.optional(),
+        page: z.coerce.number().int().min(1).max(10_000).default(1),
+        pageSize: z.coerce.number().int().min(1).max(500).default(60),
+      })
       .parse(req.query);
-    res.json(await workspace.history(ctxOf(req), f, page));
+    res.json(await workspace.history(ctxOf(req), f, page, pageSize));
   });
 
   /* ------------------------ Heartbeat, velocity, standup ------------------------ */

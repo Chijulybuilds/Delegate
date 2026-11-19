@@ -9,7 +9,7 @@ import { cx, EASE } from './ui';
 export function StatTile({ label, value, hint, testId }: { label: string; value: ReactNode; hint?: string; testId?: string }) {
   return (
     <div className="rounded-2xl border border-line bg-paper px-5 py-4 shadow-[var(--shadow-card)]" data-testid={testId}>
-      <p className="text-[13px] text-mute">{label}</p>
+      <p className="text-[0.8125rem] text-mute">{label}</p>
       <p className="mt-1.5 text-[2rem] font-medium leading-none tracking-display">{value}</p>
       {hint && <p className="mt-2 text-xs text-faint">{hint}</p>}
     </div>
@@ -48,7 +48,7 @@ export function ColumnChart({
     <figure aria-label={title}>
       <div className="relative flex" style={{ height }}>
         {/* y-axis ticks */}
-        <div className="relative w-7 shrink-0 text-right text-[11px] text-faint">
+        <div className="relative w-7 shrink-0 text-right text-[0.6875rem] text-faint">
           {ticks.map((t) => (
             <span key={t} className="absolute right-2 -translate-y-1/2" style={{ top: `${(1 - t / max) * 100}%` }}>
               {t}
@@ -83,7 +83,7 @@ export function ColumnChart({
                     animate={{ height: `${h}%` }}
                     transition={{ duration: 0.7, ease: EASE, delay: i * 0.02 }}
                   >
-                    {showLabel && <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[11px] font-medium text-ink-2">{d.value}</span>}
+                    {showLabel && <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[0.6875rem] font-medium text-ink-2">{d.value}</span>}
                   </motion.div>
                   {hover === i && (
                     <div className="pointer-events-none absolute bottom-full z-10 mb-1 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-xs text-milk shadow-[var(--shadow-float)]">
@@ -96,7 +96,7 @@ export function ColumnChart({
           </div>
         </div>
       </div>
-      <div className="ml-7 mt-2 flex gap-[2px] text-[10px] text-faint">
+      <div className="ml-7 mt-2 flex gap-[2px] text-[0.625rem] text-faint">
         {data.map((d, i) => (
           <span key={d.label} className="flex-1 text-center">
             {data.length <= 14 || i % 2 === 0 ? d.label : ''}

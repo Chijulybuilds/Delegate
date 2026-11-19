@@ -125,9 +125,11 @@ export class SupabaseStore implements Store {
       }
       // Private tasks: row-level security that hides other people's tasks from browsers.
       const PRIVATE = 'supabase/migrations/20261119000000_private_tasks.sql';
+      const missingFn = (e: DbError) => !!e && (['PGRST202', '42883'].includes(e.code ?? '') || /could not find the function|does not exist/i.test(e.message));
       const priv = await this.db.rpc('can_see_task', { p_task: NIL_UUID });
-      if (priv.error && (['PGRST202', '42883'].includes(priv.error.code ?? '') || /could not find the function|does not exist/i.test(priv.error.message))) {
-        return `Database update needed: open Supabase → SQL Editor and run ${PRIVATE} (it keeps each person's tasks private).`;
+      const invites = await this.db.rpc('invite_codes_readable_by_browsers');
+      if (missingFn(priv.error) || missingFn(invites.error) || invites.data === true) {
+        return `Database update needed: open Supabase → SQL Editor and run ${PRIVATE} (it keeps each person's tasks private and invite codes with the owner).`;
       }
       // Security: browsers must not be able to purge a workspace. Probing with a nil id deletes nothing.
       if (this.publicDb) {

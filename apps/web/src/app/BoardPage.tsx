@@ -2,7 +2,7 @@ import { availableActions, isManagerRole, LANES, STATUS_META, taskRef, type Proo
 import { AlarmClock, ArrowRight, BellRing, CirclePlay, History, OctagonPause, Pause, Plus, RefreshCw, ShieldCheck, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { EmptyLaneArt } from '../components/EmptyLaneArt';
 import { useToast } from '../components/Toast';
 import { Avatar, Button, cx, EASE, EmptyState, PriorityTag, Segmented, Select, Spinner, StatusDot } from '../components/ui';
@@ -104,10 +104,17 @@ export default function BoardPage() {
     }
     return list;
   }, [board.data, scope, dept, person, meId, focus, isManager]);
+  const navigate = useNavigate();
+  // For the owner, "Waiting on me" is everything from earlier days that still needs something.
+  const earlier = (board.data?.earlier.unfinished ?? 0) + (board.data?.earlier.awaitingAudit ?? 0);
   const glance = useMemo(() => {
     const all = board.data?.tasks ?? [];
-    return GLANCE[isManager ? 'manager' : 'member'].map((f) => ({ id: f, label: FOCUS[f].label, count: all.filter(FOCUS[f].match(meId, isManager)).length }));
-  }, [board.data, meId, isManager]);
+    return GLANCE[isManager ? 'manager' : 'member'].map((f) => ({
+      id: f,
+      label: FOCUS[f].label,
+      count: f === 'waitingOnMe' && isOwner ? earlier : all.filter(FOCUS[f].match(meId, isManager)).length,
+    }));
+  }, [board.data, meId, isManager, isOwner, earlier]);
 
   const waitingOnMe = (board.data?.tasks ?? []).filter((t) => t.status === 'blocked' && t.waitingOnId === meId);
   const counts = useMemo(() => {
@@ -156,19 +163,19 @@ export default function BoardPage() {
           return (
             <motion.button
               key={g.id}
-              onClick={() => setFocus((f) => (f === g.id ? null : g.id))}
+              onClick={() => (g.id === 'waitingOnMe' && isOwner ? navigate('/app/waiting') : setFocus((f) => (f === g.id ? null : g.id)))}
               aria-pressed={on}
               whileTap={{ scale: 0.98 }}
               className={cx(
-                'flex items-center justify-between rounded-2xl border px-4 py-3.5 text-left shadow-[var(--shadow-card)] transition-colors',
-                on ? 'border-ink bg-ink text-milk' : 'border-line bg-paper hover:border-line-2',
+                'flex items-center justify-between rounded-2xl border px-4 py-3.5 text-left shadow-[var(--shadow-tile)] transition-[background,border,box-shadow,transform] duration-300',
+                on ? 'border-ink bg-ink text-milk' : 'border-line bg-paper hover:-translate-y-0.5 hover:border-line-2 hover:shadow-[var(--shadow-tile-hover)]',
               )}
               data-testid={`glance-${g.id}`}
             >
-              <span className={cx('text-[13.5px]', on ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
+              <span className={cx('text-[0.8438rem]', on ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
               <span
                 className={cx(
-                  'grid h-9 min-w-9 place-items-center rounded-xl px-2 transition-colors',
+                  'grid h-9 min-w-9 place-items-center rounded-xl px-2 shadow-[var(--shadow-chip)] ring-1 ring-black/[0.04] transition-colors',
                   on ? 'bg-milk/15 text-milk' : alert ? 'bg-s-open-soft text-s-open-ink' : g.count > 0 ? 'bg-milk-2 text-ink' : (tone ?? 'bg-milk-2 text-ink-2'),
                 )}
               >
@@ -189,10 +196,10 @@ export default function BoardPage() {
         })}
       </div>
 
-      {/* Every day starts fresh: earlier work lives on the History page. */}
-      {board.data && (board.data.earlier.unfinished > 0 || board.data.earlier.awaitingAudit > 0) && (
+      {/* Every day starts fresh: earlier work waits for the owner under "Waiting on me". */}
+      {isOwner && board.data && earlier > 0 && (
         <Link
-          to={`/app/history${board.data.earlier.awaitingAudit > 0 && board.data.earlier.unfinished === 0 ? '?status=done' : ''}`}
+          to="/app/waiting"
           className="group mx-4 mb-4 flex items-center gap-3 rounded-2xl border border-dashed border-line-2 px-4 py-2.5 text-sm text-ink-2 transition-colors hover:border-ink hover:text-ink sm:mx-8"
           data-testid="earlier-days"
         >
@@ -207,7 +214,7 @@ export default function BoardPage() {
               .join(' · ')}
           </span>
           <span className="ml-auto inline-flex items-center gap-1 font-medium">
-            History <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+            Waiting on me <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
           </span>
         </Link>
       )}
@@ -266,61 +273,23 @@ export default function BoardPage() {
         )}
       </AnimatePresence>
 
-      <LayoutGroup>
-        <div className="grid gap-3 px-4 pb-10 sm:px-8 md:grid-cols-2 xl:grid-cols-4">
-          {LANES.map((lane) => {
-            const laneTasks = tasks
-              .filter((t) => (lane.statuses as readonly string[]).includes(t.status))
-              .sort((a, b) => (b.status === 'blocked' ? 1 : 0) - (a.status === 'blocked' ? 1 : 0) || b.updatedAt.localeCompare(a.updatedAt));
-            return (
-              <section key={lane.id} className="relative flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
-                {/* The lane's colour washes down from the top, like a coloured header */}
-                <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent', laneWash[lane.id])} aria-hidden />
-                <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-12 opacity-80', laneBand[lane.id])} aria-hidden />
-                <header className="relative flex items-center gap-2 px-2 pb-3 pt-1.5">
-                  <span className={cx('size-2.5 rounded-full', laneTone[lane.id])} />
-                  <h2 className="text-[14.5px] font-medium tracking-[-0.01em]">{lane.label}</h2>
-                  <span className="ml-auto grid min-w-6 place-items-center rounded-full bg-paper/90 px-2 py-0.5 text-xs text-ink-2 shadow-[var(--shadow-card)]">{laneTasks.length}</span>
-                </header>
-                <div className="relative flex flex-1 flex-col gap-2">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {laneTasks.map((t) => (
-                      <TaskCard
-                        key={t.id}
-                        task={t}
-                        ws={ws.data}
-                        aiVerdict={board.data?.aiVerdicts[t.id] ?? null}
-                        verifiedBy={board.data?.verified[t.id] ?? null}
-                        news={news[t.id]?.count ?? 0}
-                        onOpen={() => openTask(t.id)}
-                        onQuick={(a) => quick(t, a)}
-                        busy={transition.isPending && transition.variables?.id === t.id}
-                      />
-                    ))}
-                  </AnimatePresence>
-                  {laneTasks.length === 0 && (
-                    <motion.div className="flex flex-1 flex-col items-center justify-center gap-2 px-2 py-8 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
-                      <EmptyLaneArt className="w-24 text-faint" />
-                      <p className="text-[13px] text-mute">{lane.id === 'open' && isManager && !focus ? 'No tasks yet today' : 'No tasks here yet'}</p>
-                    </motion.div>
-                  )}
-                  {lane.id === 'approved' && isOwner && (
-                    <Link to="/app/audits" className="mt-auto inline-flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs text-mute transition-colors hover:bg-paper hover:text-ink" data-testid="all-audits-link">
-                      Every audit, all time <ArrowRight className="size-3.5" />
-                    </Link>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </LayoutGroup>
+      <BoardLanes
+        tasks={tasks}
+        ws={ws.data}
+        aiVerdicts={board.data?.aiVerdicts ?? {}}
+        verified={board.data?.verified ?? {}}
+        news={news}
+        onOpen={(id) => openTask(id)}
+        onQuick={quick}
+        busyId={transition.isPending ? (transition.variables?.id ?? null) : null}
+        emptyOpenHint={isManager && !focus ? 'No tasks yet today' : 'No tasks here yet'}
+      />
 
       {(board.data?.tasks.length ?? 0) === 0 && (
         <div className="px-4 pb-10 sm:px-8">
           <EmptyState
             title="Your board is empty"
-            body="Every day starts with a fresh board; yesterday’s work is on the History page. Assign the first task of the day: it lands red on the assignee’s board."
+            body={isOwner ? 'Every day starts with a fresh board; earlier days wait for you under “Waiting on me”. Assign the first task of the day: it lands red on the assignee’s board.' : 'Every day starts with a fresh board. Your tasks for today will appear here.'}
             action={<Button onClick={() => setCreating(true)}>Create the first task</Button>}
           />
         </div>
@@ -332,12 +301,95 @@ export default function BoardPage() {
   );
 }
 
+/** Open · In motion · Executed · Audited — the board layout shared by Today and "Waiting on me". */
+export function BoardLanes({
+  tasks,
+  ws,
+  aiVerdicts,
+  verified,
+  news,
+  onOpen,
+  onQuick,
+  busyId,
+  emptyOpenHint = 'No tasks here yet',
+  dayOf,
+}: {
+  tasks: Task[];
+  ws: WorkspaceData;
+  aiVerdicts: Record<string, TaskProof['aiVerdict']>;
+  verified: Record<string, ProofSource>;
+  news: Record<string, { count: number }>;
+  onOpen: (id: string) => void;
+  onQuick: (task: Task, action: TransitionAction) => void;
+  busyId: string | null;
+  emptyOpenHint?: string;
+  /** When the board spans several days, each card shows the day it was given out. */
+  dayOf?: (task: Task) => string | null;
+}) {
+  const isOwner = ws.me.role === 'owner';
+  return (
+    <LayoutGroup>
+      <div className="grid gap-3 px-4 pb-10 sm:px-8 md:grid-cols-2 xl:grid-cols-4">
+        {LANES.map((lane) => {
+          const laneTasks = tasks
+            .filter((t) => (lane.statuses as readonly string[]).includes(t.status))
+            .sort((a, b) => (b.status === 'blocked' ? 1 : 0) - (a.status === 'blocked' ? 1 : 0) || b.updatedAt.localeCompare(a.updatedAt));
+          return (
+            <section key={lane.id} className="relative flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
+              {/* The lane's colour washes down from the top, like a coloured header */}
+              <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent', laneWash[lane.id])} aria-hidden />
+              <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-12 opacity-80', laneBand[lane.id])} aria-hidden />
+              <header className="relative flex items-center gap-2 px-2 pb-3 pt-1.5">
+                <span className={cx('size-2.5 rounded-full', laneTone[lane.id])} />
+                <h2 className="text-[0.9062rem] font-medium tracking-[-0.01em]">{lane.label}</h2>
+                <span className="ml-auto grid min-w-6 place-items-center rounded-full bg-paper/90 px-2 py-0.5 text-xs text-ink-2 shadow-[var(--shadow-card)]" data-testid={`lane-count-${lane.id}`}>
+                  {laneTasks.length}
+                </span>
+              </header>
+              <div className="relative flex flex-1 flex-col gap-2">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {laneTasks.map((t) => (
+                    <TaskCard
+                      key={t.id}
+                      task={t}
+                      ws={ws}
+                      aiVerdict={aiVerdicts[t.id] ?? null}
+                      verifiedBy={verified[t.id] ?? null}
+                      news={news[t.id]?.count ?? 0}
+                      day={dayOf?.(t) ?? null}
+                      onOpen={() => onOpen(t.id)}
+                      onQuick={(a) => onQuick(t, a)}
+                      busy={busyId === t.id}
+                    />
+                  ))}
+                </AnimatePresence>
+                {laneTasks.length === 0 && (
+                  <motion.div className="flex flex-1 flex-col items-center justify-center gap-2 px-2 py-8 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+                    <EmptyLaneArt className="w-24 text-faint" />
+                    <p className="text-[0.8125rem] text-mute">{lane.id === 'open' ? emptyOpenHint : 'No tasks here yet'}</p>
+                  </motion.div>
+                )}
+                {lane.id === 'approved' && isOwner && (
+                  <Link to="/app/audits" className="mt-auto inline-flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs text-mute transition-colors hover:bg-paper hover:text-ink" data-testid="all-audits-link">
+                    Every audit, all time <ArrowRight className="size-3.5" />
+                  </Link>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </LayoutGroup>
+  );
+}
+
 function TaskCard({
   task,
   ws,
   aiVerdict,
   verifiedBy,
   news = 0,
+  day = null,
   onOpen,
   onQuick,
   busy,
@@ -348,6 +400,8 @@ function TaskCard({
   verifiedBy: ProofSource | null;
   /** Unread messages and updates about this task for the viewer: the red badge. */
   news?: number;
+  /** The day it was given out (shown when a board spans several days). */
+  day?: string | null;
   onOpen: () => void;
   onQuick: (a: TransitionAction) => void;
   busy: boolean;
@@ -390,23 +444,28 @@ function TaskCard({
       <NewsBadge count={news} />
       <div className="flex items-center gap-2">
         <StatusDot status={task.status} pulse={task.status === 'blocked'} />
-        <span className="font-mono text-[11px] text-faint" data-testid="task-ref">
+        <span className="shrink-0 whitespace-nowrap font-mono text-[0.6875rem] text-faint" data-testid="task-ref">
           {taskRef(task.seq)}
         </span>
         <PriorityTag priority={task.priority} />
+        {day && (
+          <span className="shrink-0 whitespace-nowrap rounded-full bg-milk-2 px-1.5 py-0.5 text-[0.625rem] font-medium text-ink-2" data-testid="task-day">
+            {day}
+          </span>
+        )}
         {task.source !== 'app' && (
-          <span className="rounded-full bg-milk px-1.5 py-0.5 text-[10px] font-medium text-mute" title={`Created from ${SOURCE_LABEL[task.source]}`}>
+          <span className="rounded-full bg-milk px-1.5 py-0.5 text-[0.625rem] font-medium text-mute" title={`Created from ${SOURCE_LABEL[task.source]}`}>
             {SOURCE_LABEL[task.source]}
           </span>
         )}
         {dept && (
-          <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-faint">
-            <span className="size-1.5 rounded-full" style={{ background: dept.color }} />
-            {dept.name}
+          <span className="ml-auto inline-flex min-w-0 items-center gap-1.5 text-[0.6875rem] text-faint">
+            <span className="size-1.5 shrink-0 rounded-full" style={{ background: dept.color }} />
+            <span className="truncate">{dept.name}</span>
           </span>
         )}
       </div>
-      <h3 className="mt-2 text-[14.5px] font-medium leading-snug tracking-[-0.01em]">{task.title}</h3>
+      <h3 className="mt-2 text-[0.9062rem] font-medium leading-snug tracking-[-0.01em]">{task.title}</h3>
 
       {task.status === 'blocked' && task.blockedReason && (
         <div className="mt-2 rounded-xl bg-s-active-soft px-2.5 py-1.5 text-xs text-s-active-ink">
@@ -416,14 +475,14 @@ function TaskCard({
         </div>
       )}
       {(task.status === 'done' || task.status === 'approved') && verifiedBy && (
-        <span className="mt-2 mr-1 inline-flex items-center gap-1 rounded-full bg-s-approved-soft px-2 py-0.5 text-[11px] font-medium text-s-approved-ink" data-testid="verified-badge">
+        <span className="mt-2 mr-1 inline-flex items-center gap-1 rounded-full bg-s-approved-soft px-2 py-0.5 text-[0.6875rem] font-medium text-s-approved-ink" data-testid="verified-badge">
           <ShieldCheck className="size-3" /> Verified · {verifiedBy === 'gdrive' ? 'Google Drive' : verifiedBy === 'github' ? 'GitHub' : 'WhatsApp'}
         </span>
       )}
       {task.status === 'done' && aiVerdict && (
         <span
           className={cx(
-            'mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+            'mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium',
             aiVerdict === 'pass' ? 'bg-s-done-soft text-s-done-ink' : aiVerdict === 'review' ? 'bg-s-active-soft text-s-active-ink' : 'bg-s-open-soft text-s-open-ink',
           )}
         >
@@ -436,7 +495,7 @@ function TaskCard({
         <span className="truncate text-xs text-ink-2">{assignee?.fullName.split(' ')[0] ?? 'Unassigned'}</span>
         <span
           className={cx(
-            'ml-auto shrink-0 text-[11px]',
+            'ml-auto shrink-0 text-[0.6875rem]',
             due.overdue && task.status !== 'done' && task.status !== 'approved' ? 'rounded-full bg-s-open-soft px-2 py-0.5 font-medium text-s-open-ink' : 'text-faint',
           )}
         >
@@ -472,7 +531,7 @@ export function NewsBadge({ count }: { count: number }) {
       {count > 0 && (
         <motion.span
           key="news"
-          className="absolute -right-1.5 -top-1.5 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_2px_8px_rgb(229_72_77/0.45)] ring-2 ring-paper"
+          className="absolute -right-1.5 -top-1.5 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[0.6875rem] font-semibold leading-none text-white shadow-[0_2px_8px_rgb(229_72_77/0.45)] ring-2 ring-paper"
           initial={{ scale: 0, rotate: -20 }}
           animate={{ scale: 1, rotate: 0 }}
           exit={{ scale: 0, opacity: 0 }}

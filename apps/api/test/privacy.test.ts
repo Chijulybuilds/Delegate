@@ -132,35 +132,80 @@ describe('all-time audits (owner only)', () => {
   });
 });
 
-describe('every day starts with an empty board; earlier days go to History', () => {
-  it('moves yesterday’s tasks off Today and into History, where they can still be filtered and opened', async () => {
+describe('every day starts with an empty board; earlier days wait on the owner', () => {
+  it('moves yesterday’s tasks off Today and onto the owner’s "Waiting on me", filterable by day and time', async () => {
     const ada = await login('demo-ada');
     const tunde = await login('demo-tunde');
     const today = await createTask(ada, { title: 'Book the venue', assigneeId: 'demo-tunde', priority: 'high' });
     const old = await createTask(ada, { title: 'Order printer toner', assigneeId: 'demo-tunde', priority: 'low' });
-    const yesterday = new Date(Date.now() - 30 * 3_600_000).toISOString();
-    store.tasks.get(old.id)!.createdAt = yesterday;
+    // Given out yesterday at 09:30 Lagos time (08:30 UTC).
+    const y = new Date(Date.now() - 86_400_000);
+    store.tasks.get(old.id)!.createdAt = `${y.toISOString().slice(0, 10)}T08:30:00.000Z`;
 
-    const res = (await request(app).get('/api/tasks').set(auth(tunde)).expect(200)).body;
-    expect(res.tasks.map((t: Task) => t.id)).toContain(today.id);
-    expect(res.tasks.map((t: Task) => t.id)).not.toContain(old.id);
-    expect(res.tasks.every((t: Task) => t.createdAt >= res.day.start)).toBe(true);
-    expect(res.day.timezone).toBe('Africa/Lagos');
-    expect(res.earlier.unfinished).toBeGreaterThanOrEqual(1);
+    const staffBoard = (await request(app).get('/api/tasks').set(auth(tunde)).expect(200)).body;
+    expect(staffBoard.tasks.map((t: Task) => t.id)).toContain(today.id);
+    expect(staffBoard.tasks.map((t: Task) => t.id)).not.toContain(old.id);
+    expect(staffBoard.tasks.every((t: Task) => t.createdAt >= staffBoard.day.start)).toBe(true);
+    expect(staffBoard.day.timezone).toBe('Africa/Lagos');
+    expect(staffBoard.earlier).toEqual({ unfinished: 0, awaitingAudit: 0 }); // earlier days are the owner's
 
-    const history = async (token: string, query: Record<string, string> = {}) =>
-      ((await request(app).get('/api/history').query(query).set(auth(token)).expect(200)).body as { rows: Array<{ task: Task }>; total: number }).rows.map((r) => r.task.id);
-    expect(await history(tunde)).toContain(old.id);
-    expect(await history(tunde)).not.toContain(today.id);
-    expect(await history(tunde, { q: 'toner' })).toEqual([old.id]);
-    expect(await history(tunde, { priority: 'high' })).not.toContain(old.id);
-    expect(await history(tunde, { status: 'open' })).toContain(old.id);
-    expect(await history(tunde, { status: 'approved' })).not.toContain(old.id);
-    expect(await history(tunde, { from: new Date(Date.now() - 2 * 86_400_000).toISOString(), to: new Date(Date.now() - 86_400_000 + 3_600_000).toISOString() })).toContain(old.id);
+    const ownerBoard = (await request(app).get('/api/tasks').set(auth(ada)).expect(200)).body;
+    expect(ownerBoard.earlier.unfinished).toBeGreaterThanOrEqual(1);
 
-    // Still workable from History.
+    // Only the owner can look back.
+    await request(app).get('/api/history').set(auth(tunde)).expect(403);
+    await request(app).get('/api/history').set(auth(await login('demo-kemi'))).expect(403);
+
+    const history = async (query: Record<string, string> = {}) =>
+      ((await request(app).get('/api/history').query(query).set(auth(ada)).expect(200)).body as { rows: Array<{ task: Task }>; total: number }).rows.map((r) => r.task.id);
+    expect(await history()).toContain(old.id);
+    expect(await history()).not.toContain(today.id);
+    expect(await history({ q: 'toner' })).toEqual([old.id]);
+    expect(await history({ priority: 'high' })).not.toContain(old.id);
+    expect(await history({ status: 'open' })).toContain(old.id);
+    expect(await history({ status: 'approved' })).not.toContain(old.id);
+    const dayStart = new Date(`${y.toISOString().slice(0, 10)}T00:00:00+01:00`);
+    expect(await history({ from: dayStart.toISOString(), to: new Date(dayStart.getTime() + 86_400_000).toISOString() })).toContain(old.id);
+    // Time of day, in the workspace's time zone (09:30 Lagos).
+    expect(await history({ fromTime: '09:00', toTime: '10:00' })).toContain(old.id);
+    expect(await history({ fromTime: '10:00', toTime: '12:00' })).not.toContain(old.id);
+    expect(await history({ fromTime: '09:31' })).not.toContain(old.id);
+    await request(app).get('/api/history').query({ fromTime: '9am' }).set(auth(ada)).expect(400);
+    // The board view asks for many at once.
+    const big = (await request(app).get('/api/history').query({ pageSize: '500' }).set(auth(ada)).expect(200)).body;
+    expect(big.pageSize).toBe(500);
+
+    // The assignee can still open and finish it (e.g. from a notification).
+    await request(app).get(`/api/tasks/${old.id}`).set(auth(tunde)).expect(200);
     await request(app).post(`/api/tasks/${old.id}/transitions`).set(auth(tunde)).send({ action: 'start' }).expect(200);
-    // Privacy holds there too.
-    expect(await history(await login('demo-maya'))).not.toContain(old.id);
+  });
+});
+
+describe('invite codes belong to the owner', () => {
+  it('only the owner sees the code or makes a new one', async () => {
+    const ada = await login('demo-ada');
+    const kemi = await login('demo-kemi');
+    const tunde = await login('demo-tunde');
+
+    const owner = (await request(app).get('/api/workspace').set(auth(ada)).expect(200)).body.org.inviteCode;
+    expect(owner).toBe('LUMEN-2026');
+    for (const token of [kemi, tunde]) {
+      expect((await request(app).get('/api/workspace').set(auth(token)).expect(200)).body.org.inviteCode).toBe('');
+      expect((await request(app).get('/api/me').set(auth(token)).expect(200)).body.membership.org.inviteCode).toBe('');
+      expect(JSON.stringify((await request(app).get('/api/workspace').set(auth(token))).body)).not.toContain('LUMEN-2026');
+    }
+    // Managers can still change other settings, but not the invite code.
+    await request(app).patch('/api/workspace').set(auth(kemi)).send({ regenerateInvite: true }).expect(403);
+    const settings = await request(app).patch('/api/workspace').set(auth(kemi)).send({ timezone: 'Africa/Lagos' }).expect(200);
+    expect(settings.body.org.inviteCode).toBe('');
+
+    const fresh = (await request(app).patch('/api/workspace').set(auth(ada)).send({ regenerateInvite: true }).expect(200)).body.org.inviteCode;
+    expect(fresh).toMatch(/^[A-Z]+-[A-Z0-9]{4}$/);
+    expect(fresh).not.toBe(owner);
+
+    // Someone joining gets in, but doesn't get the code back.
+    const joiner = (await request(app).post('/api/auth/demo').send({ email: 'new@lumen.example', fullName: 'New Person' }).expect(200)).body.token;
+    const joined = await request(app).post('/api/onboarding/join').set(auth(joiner)).send({ code: fresh }).expect(201);
+    expect(joined.body.org.inviteCode).toBe('');
   });
 });

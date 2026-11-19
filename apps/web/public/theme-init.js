@@ -4,6 +4,7 @@
   try {
     var p = location.pathname;
     if (p !== '/app' && p.indexOf('/app/') !== 0) return;
+    document.documentElement.setAttribute('data-scope', 'app'); // slightly larger text in the dashboard
     var t = localStorage.getItem('delegate.theme');
     if (t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       document.documentElement.setAttribute('data-theme', 'dark');
