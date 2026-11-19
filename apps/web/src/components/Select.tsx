@@ -203,7 +203,7 @@ export function Select<T extends string>({
           size === 'inline'
             ? 'border border-transparent hover:bg-ink/[0.05] focus-visible:bg-ink/[0.05]'
             : 'border bg-paper shadow-[var(--shadow-card)] hover:border-line-2 hover:shadow-[var(--shadow-pop)] focus-visible:border-ink',
-          size !== 'inline' && (open ? 'border-ink ring-4 ring-ink/[0.06]' : 'border-line'),
+          size !== 'inline' && (open ? 'border-ink ring-4 ring-ink/[0.06]' : 'border-[var(--edge)] border-t-[var(--rim)]'),
           disabled && 'cursor-not-allowed opacity-55 hover:border-line hover:shadow-[var(--shadow-card)]',
           triggerSize[size],
           className,

@@ -99,10 +99,10 @@ export default function WaitingPage() {
     <div>
       <PageHeader title="History" subtitle="Every task from earlier days, laid out like Today. Only you, the owner, can see this page." />
 
-      <div className="z-20 space-y-3 border-b border-line bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0">
+      <div className="z-20 space-y-3 border-b border-[var(--edge)] bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0 lg:bg-panel/85">
         {/* The day: step back and forth, or pick a range */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full border border-line bg-paper p-1 shadow-[var(--shadow-card)]">
+          <div className="surface flex items-center gap-1 rounded-full p-1">
             <button onClick={() => step(-1)} className="grid size-8 place-items-center rounded-full text-ink-2 transition-colors hover:bg-ink/[0.06]" aria-label="Previous day" data-testid="day-prev">
               <ChevronLeft className="size-4" />
             </button>

@@ -69,7 +69,7 @@ export default function AuditsPage() {
           </Button>
         }
       />
-      <div className="z-20 border-b border-line bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0">
+      <div className="z-20 border-b border-[var(--edge)] bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0 lg:bg-panel/85">
         <FilterBar value={state} onChange={set} ws={ws.data} show={{ person: true, status: false }} testId="audit-filters" />
       </div>
 
