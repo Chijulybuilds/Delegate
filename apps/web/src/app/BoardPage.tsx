@@ -175,7 +175,7 @@ export default function BoardPage() {
               <span className={cx('text-[0.8438rem]', on ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
               <span
                 className={cx(
-                  'grid h-9 min-w-9 place-items-center rounded-xl px-2 shadow-[var(--shadow-chip)] ring-1 ring-black/[0.04] transition-colors',
+                  'grid h-9 min-w-9 place-items-center rounded-xl px-2 tabular-nums shadow-[var(--shadow-chip)] ring-1 ring-black/[0.04] transition-colors',
                   on ? 'bg-milk/15 text-milk' : alert ? 'bg-s-open-soft text-s-open-ink' : g.count > 0 ? 'bg-milk-2 text-ink' : (tone ?? 'bg-milk-2 text-ink-2'),
                 )}
               >
@@ -335,14 +335,14 @@ export function BoardLanes({
             .filter((t) => (lane.statuses as readonly string[]).includes(t.status))
             .sort((a, b) => (b.status === 'blocked' ? 1 : 0) - (a.status === 'blocked' ? 1 : 0) || b.updatedAt.localeCompare(a.updatedAt));
           return (
-            <section key={lane.id} className="relative flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
+            <section key={lane.id} className="relative flex min-h-[260px] flex-col overflow-hidden rounded-3xl border border-line/60 bg-milk-2/70 p-2.5 shadow-[var(--shadow-well)]" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
               {/* The lane's colour washes down from the top, like a coloured header */}
               <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent', laneWash[lane.id])} aria-hidden />
               <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-12 opacity-80', laneBand[lane.id])} aria-hidden />
               <header className="relative flex items-center gap-2 px-2 pb-3 pt-1.5">
                 <span className={cx('size-2.5 rounded-full', laneTone[lane.id])} />
                 <h2 className="text-[0.9062rem] font-medium tracking-[-0.01em]">{lane.label}</h2>
-                <span className="ml-auto grid min-w-6 place-items-center rounded-full bg-paper/90 px-2 py-0.5 text-xs text-ink-2 shadow-[var(--shadow-card)]" data-testid={`lane-count-${lane.id}`}>
+                <span className="ml-auto grid min-w-6 place-items-center rounded-full bg-paper/90 px-2 py-0.5 text-xs tabular-nums text-ink-2 shadow-[var(--shadow-card)]" data-testid={`lane-count-${lane.id}`}>
                   {laneTasks.length}
                 </span>
               </header>
@@ -437,7 +437,7 @@ function TaskCard({
       data-task-title={task.title}
       data-status={task.status}
       className={cx(
-        'group relative cursor-pointer rounded-2xl border bg-paper p-3.5 shadow-[var(--shadow-card)] outline-none transition-[border,box-shadow] hover:border-line-2 hover:shadow-[var(--shadow-float)] focus-visible:border-ink',
+        'group relative cursor-pointer rounded-2xl border bg-paper p-3.5 shadow-[var(--shadow-card)] outline-none transition-[border,box-shadow,translate] duration-200 hover:-translate-y-0.5 hover:border-line-2 hover:shadow-[var(--shadow-card-hover)] focus-visible:-translate-y-0.5 focus-visible:border-ink focus-visible:shadow-[var(--shadow-card-hover)]',
         task.status === 'blocked' ? 'border-s-active/50' : news ? 'border-s-open/40' : 'border-line',
       )}
     >
@@ -495,7 +495,7 @@ function TaskCard({
         <span className="truncate text-xs text-ink-2">{assignee?.fullName.split(' ')[0] ?? 'Unassigned'}</span>
         <span
           className={cx(
-            'ml-auto shrink-0 text-[0.6875rem]',
+            'ml-auto shrink-0 text-[0.6875rem] tabular-nums',
             due.overdue && task.status !== 'done' && task.status !== 'approved' ? 'rounded-full bg-s-open-soft px-2 py-0.5 font-medium text-s-open-ink' : 'text-faint',
           )}
         >

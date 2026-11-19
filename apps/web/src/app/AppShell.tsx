@@ -119,7 +119,7 @@ export default function AppShell() {
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      className="relative ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[0.6875rem] font-semibold text-white"
+                      className="relative ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[0.6875rem] font-semibold tabular-nums text-white"
                       title="Tasks with new messages or updates"
                       data-testid={`nav-news-${navId(n.to)}`}
                     >
@@ -261,7 +261,7 @@ function NotificationBell() {
       >
         <Bell className="size-[18px]" strokeWidth={1.8} />
         {bellCount > 0 && (
-          <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-s-open px-1 text-[0.625rem] font-semibold leading-4 text-white" data-testid="bell-count">
+          <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-s-open px-1 text-[0.625rem] font-semibold leading-4 tabular-nums text-white" data-testid="bell-count">
             {bellCount > 9 ? '9+' : bellCount}
           </span>
         )}
@@ -301,7 +301,7 @@ function NotificationBell() {
                     <span className="min-w-0">
                       <span className="block text-sm font-medium leading-snug">{n.latest.title}</span>
                       <span className="mt-0.5 line-clamp-1 block text-xs text-mute">{n.latest.body}</span>
-                      <span className="mt-0.5 block text-[0.6875rem] text-faint">{timeAgo(n.latest.createdAt)}</span>
+                      <span className="mt-0.5 block text-[0.6875rem] tabular-nums text-faint">{timeAgo(n.latest.createdAt)}</span>
                     </span>
                   </button>
                 ))}
@@ -329,7 +329,7 @@ function NotificationBell() {
                     <span className="min-w-0">
                       <span className="block text-sm font-medium leading-snug">{n.title}</span>
                       <span className="mt-0.5 line-clamp-2 block text-xs text-mute">{n.body}</span>
-                      <span className="mt-1 block text-[0.6875rem] text-faint">{timeAgo(n.createdAt)}</span>
+                      <span className="mt-1 block text-[0.6875rem] tabular-nums text-faint">{timeAgo(n.createdAt)}</span>
                     </span>
                   </button>
                 </li>
