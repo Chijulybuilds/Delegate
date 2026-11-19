@@ -49,7 +49,7 @@
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Surfaces: the board panel, and a cool slate for secondary text in the dashboard. */
-  --color-panel: #fdfdfc;
+  --color-panel: #ffffff;
   --color-slate: #64748b;
 
   /*
@@ -80,11 +80,22 @@
   --ruby: linear-gradient(180deg, #ef5c61 0%, #d63a40 100%);
   --ruby-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 1px 2px rgb(150 20 25 / 0.3), 0 4px 10px -2px rgb(214 58 64 / 0.35);
 
-  /* The dashboard's backdrop: a soft ambient gradient under the frosted sidebar and floating board. */
-  --canvas:
-    radial-gradient(1100px 620px at -5% -10%, rgb(199 210 226 / 0.55), transparent 62%),
-    radial-gradient(900px 640px at 105% 110%, rgb(226 214 199 / 0.45), transparent 60%), #eceef1;
-  --glass: rgb(246 247 249 / 0.62);
+  /* The dashboard's backdrop: a solid, slightly deeper grey (lit softly from above) for the 3D panels to rise from. */
+  --canvas: radial-gradient(1400px 520px at 50% -12%, rgb(255 255 255 / 0.55), transparent 70%), #dde0e5;
+
+  /*
+   * 3D panels (the board and the sidebar). They read as solid blocks coming out of the screen:
+   * a lit top edge, a darker lower edge, a visible thickness (the solid offset under the panel),
+   * then contact, mid and far shadows.
+   */
+  --slab-side: #c3c8d0;
+  --slab-side-2: #d3d7dd;
+  --shadow-slab:
+    inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -1px 0 rgb(15 23 42 / 0.06), 0 0 0 1px rgb(15 23 42 / 0.07), 0 3px 0 -1px var(--slab-side-2), 0 7px 0 -1px var(--slab-side),
+    0 8px 8px -2px rgb(15 23 42 / 0.16), 0 18px 30px -10px rgb(15 23 42 / 0.2), 0 40px 70px -24px rgb(15 23 42 / 0.32), 0 70px 120px -40px rgb(15 23 42 / 0.28);
+  --shadow-slab-sm:
+    inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -1px 0 rgb(15 23 42 / 0.06), 0 0 0 1px rgb(15 23 42 / 0.07), 0 3px 0 -1px var(--slab-side-2), 0 5px 0 -1px var(--slab-side),
+    0 6px 6px -2px rgb(15 23 42 / 0.14), 0 16px 26px -10px rgb(15 23 42 / 0.18), 0 32px 56px -24px rgb(15 23 42 / 0.26);
 }
 
 /*
@@ -131,7 +142,7 @@ html[data-theme='dark'] {
   --color-avatar-5: #2c3543;
   --color-avatar-6: #3a3627;
 
-  --color-panel: #121211;
+  --color-panel: #151514;
   --color-slate: #94a3b8;
 
   --edge: rgb(255 255 255 / 0.07);
@@ -154,10 +165,15 @@ html[data-theme='dark'] {
   --ruby: linear-gradient(180deg, #f2666b 0%, #d8444a 100%);
   --ruby-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px -2px rgb(0 0 0 / 0.55);
 
-  --canvas:
-    radial-gradient(1100px 620px at -5% -10%, rgb(59 92 160 / 0.16), transparent 62%),
-    radial-gradient(900px 640px at 105% 110%, rgb(120 84 168 / 0.12), transparent 60%), #08080a;
-  --glass: rgb(18 18 20 / 0.55);
+  --canvas: radial-gradient(1400px 520px at 50% -12%, rgb(255 255 255 / 0.05), transparent 70%), #050506;
+
+  --slab-side: #000000;
+  --shadow-slab:
+    inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.07), 0 3px 0 -1px #121214, 0 7px 0 -1px #0b0b0d,
+    0 8px 8px -2px rgb(0 0 0 / 0.6), 0 18px 30px -10px rgb(0 0 0 / 0.7), 0 40px 70px -24px rgb(0 0 0 / 0.85), 0 70px 120px -40px rgb(0 0 0 / 0.8);
+  --shadow-slab-sm:
+    inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.07), 0 3px 0 -1px #121214, 0 5px 0 -1px #0b0b0d,
+    0 6px 6px -2px rgb(0 0 0 / 0.6), 0 16px 26px -10px rgb(0 0 0 / 0.7), 0 32px 56px -24px rgb(0 0 0 / 0.8);
 }
 
 /* Switching theme: colours ease across instead of snapping (the View Transition wipe takes over where supported). */
@@ -301,30 +317,52 @@ html[data-scope='app'] {
       0 0 8px 1px color-mix(in srgb, currentColor 45%, transparent);
   }
 
-  /* The floating board panel on wide screens: solid, lit and elevated over the canvas. */
+  /* The board on wide screens: a solid 3D panel rising out of the screen. */
   .shell {
     @media (width >= 64rem) {
-      margin: 12px 12px 12px 0;
-      min-height: calc(100dvh - 24px);
-      border-radius: 22px;
+      margin: 14px 16px 22px 14px;
+      min-height: calc(100dvh - 36px);
+      border-radius: 24px;
       background-color: var(--color-panel);
-      border: 1px solid transparent;
-      border-top-color: var(--rim);
-      box-shadow: var(--shadow-shell);
+      box-shadow: var(--shadow-slab);
       overflow: clip;
+      animation: slab-rise 0.7s var(--ease-spring) backwards;
     }
   }
 
-  /* Phone top and bottom bars: the same frost, more opaque so content scrolling under stays quiet. */
-  .glass-bar {
-    background-color: color-mix(in srgb, var(--color-milk) 92%, transparent);
-    backdrop-filter: blur(24px) saturate(1.4);
+  /* The sidebar on wide screens: the same kind of 3D panel, a little lower. */
+  .slab-side {
+    @media (width >= 64rem) {
+      margin: 14px 0 22px 16px;
+      border-radius: 24px;
+      background-color: var(--color-panel);
+      box-shadow: var(--shadow-slab-sm);
+      animation: slab-rise 0.6s var(--ease-spring) backwards;
+    }
   }
 
-  /* The frosted sidebar over the canvas. */
-  .glass {
-    background-color: var(--glass);
-    backdrop-filter: blur(24px) saturate(1.4);
+  /* Phone top and bottom bars: solid, with a shadow that lifts them off the page. */
+  .bar {
+    background-color: var(--color-panel);
+  }
+}
+
+/* The panels rise into place once, as the dashboard opens. */
+@keyframes slab-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    box-shadow: 0 0 0 1px rgb(15 23 42 / 0.05), 0 2px 4px rgb(15 23 42 / 0.06);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .slab-side {
+    animation: none !important;
   }
 }
 

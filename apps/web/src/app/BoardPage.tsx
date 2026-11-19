@@ -344,7 +344,7 @@ export function BoardLanes({
             .filter((t) => (lane.statuses as readonly string[]).includes(t.status))
             .sort((a, b) => (b.status === 'blocked' ? 1 : 0) - (a.status === 'blocked' ? 1 : 0) || b.updatedAt.localeCompare(a.updatedAt));
           return (
-            <section key={lane.id} className="well relative flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
+            <section key={lane.id} className="relative flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
               {/* The lane's colour washes down from the top, like a coloured header */}
               <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent', laneWash[lane.id])} aria-hidden />
               <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-12 opacity-80', laneBand[lane.id])} aria-hidden />

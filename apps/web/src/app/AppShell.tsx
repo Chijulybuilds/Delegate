@@ -77,9 +77,9 @@ export default function AppShell() {
   const badge: Record<string, number> = { Today: newsToday, History: role === 'owner' ? newsEarlier : 0 };
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[240px_1fr]">
-      {/* Sidebar (desktop): frosted glass over the ambient canvas */}
-      <aside className="glass sticky top-0 hidden h-dvh flex-col px-4 py-5 lg:flex">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[256px_1fr]">
+      {/* Sidebar (desktop): a solid 3D panel */}
+      <aside className="slab-side sticky top-0 z-40 hidden h-dvh flex-col px-4 py-5 lg:top-[14px] lg:flex lg:h-[calc(100dvh-36px)]">
         <div className="flex items-center justify-between px-2">
           <Logo />
           <NotificationBell />
@@ -99,7 +99,7 @@ export default function AppShell() {
               to={n.to}
               end={n.end}
               className={({ isActive }) =>
-                cx('relative flex h-11 items-center gap-3 rounded-xl px-3 text-[0.875rem] transition-colors duration-300', isActive ? 'font-medium text-milk' : 'text-ink-2/80 hover:bg-paper/70 hover:text-ink')
+                cx('relative flex h-11 items-center gap-3 rounded-xl px-3 text-[0.875rem] transition-colors duration-300', isActive ? 'font-medium text-milk' : 'text-ink-2/80 hover:bg-ink/[0.05] hover:text-ink')
               }
               data-testid={`nav-${navId(n.to)}`}
             >
@@ -138,7 +138,7 @@ export default function AppShell() {
       </aside>
 
       {/* Top bar (mobile) */}
-      <header className="glass-bar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--edge)] px-4 lg:hidden">
+      <header className="bar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--edge)] px-4 shadow-[0_6px_16px_-8px_rgb(15_23_42/0.22)] lg:hidden">
         <div className="flex min-w-0 items-center gap-2">
           <LogoMark className="size-7 shrink-0" />
           <span className="truncate text-[0.9375rem] font-medium tracking-[-0.02em]">{ws.data.org.name}</span>
@@ -149,7 +149,7 @@ export default function AppShell() {
         </div>
       </header>
 
-      {/* The board: a solid, lit panel floating over the canvas (wide screens) */}
+      {/* The board: a solid 3D panel coming out of the screen (wide screens) */}
       <main className="shell min-w-0 pb-24 lg:pb-0">
         <TrialBanner />
         <motion.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }}>
@@ -158,7 +158,7 @@ export default function AppShell() {
       </main>
 
       {/* Bottom tabs (mobile) */}
-      <nav className="scrollbar-none fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-[var(--edge)] glass-bar pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="Workspace">
+      <nav className="scrollbar-none fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-[var(--edge)] bar pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_-10px_rgb(15_23_42/0.25)] lg:hidden" aria-label="Workspace">
         {nav.map((n) => (
           <NavLink
             key={n.to}

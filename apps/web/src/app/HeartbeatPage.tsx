@@ -73,7 +73,7 @@ export default function HeartbeatPage() {
         ) : (
           groups.map((g) => (
             <section key={g.day} className="mb-8">
-              <h2 className="sticky top-14 z-10 -mx-1 mb-3 bg-milk/90 px-1 py-1 text-xs font-medium uppercase tracking-[0.14em] text-faint backdrop-blur lg:top-0 lg:bg-panel/90">{g.day}</h2>
+              <h2 className="sticky top-14 z-10 -mx-1 mb-3 bg-milk/90 px-1 py-1 text-xs font-medium uppercase tracking-[0.14em] text-faint backdrop-blur lg:top-0 lg:bg-panel">{g.day}</h2>
               <ol className="relative space-y-2" data-testid="heartbeat-list">
                 <AnimatePresence initial={false}>
                   {g.events.map((e) => {
