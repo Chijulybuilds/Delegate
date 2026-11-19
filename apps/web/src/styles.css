@@ -46,15 +46,56 @@
   --color-avatar-6: #ece7d6;
 
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
-  --shadow-card: 0 1px 0 rgb(0 0 0 / 0.02), 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.08);
-  --shadow-card-hover: 0 1px 2px rgb(0 0 0 / 0.05), 0 8px 18px -10px rgb(0 0 0 / 0.15);
-  --shadow-well: inset 0 1px 3px rgb(0 0 0 / 0.035), 0 1px 0 rgb(255 255 255 / 0.45);
-  --shadow-float: 0 24px 60px -24px rgb(0 0 0 / 0.25), 0 2px 6px rgb(0 0 0 / 0.04);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Surfaces: the board panel, and a cool slate for secondary text in the dashboard. */
+  --color-panel: #ffffff;
+  --color-slate: #64748b;
+
+  /*
+   * Lighting. Surfaces aren't outlined with flat grey lines: a faint hairline on the sides, a
+   * bright "rim" along the top edge (light from above), and two shadows (a tight contact shadow to
+   * anchor, a wide soft one for elevation).
+   */
+  --edge: rgb(15 23 42 / 0.08);
+  --rim: rgb(255 255 255 / 0.95);
+  --rim-strong: #ffffff;
+  --shadow-card: inset 0 1px 0 var(--rim), 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 12px -4px rgb(15 23 42 / 0.08);
+  --shadow-card-hover: inset 0 1px 0 var(--rim-strong), 0 2px 4px rgb(15 23 42 / 0.06), 0 14px 28px -8px rgb(15 23 42 / 0.16);
+  --shadow-float: inset 0 1px 0 var(--rim), 0 0 0 1px rgb(15 23 42 / 0.04), 0 8px 20px -8px rgb(15 23 42 / 0.12), 0 32px 64px -24px rgb(15 23 42 / 0.28);
+  /* The floating board panel: hairline, contact and elevation. */
+  --shadow-shell: 0 0 0 1px rgb(15 23 42 / 0.06), 0 4px 12px rgb(15 23 42 / 0.05), 0 28px 60px -12px rgb(15 23 42 / 0.2);
+  /* Board columns sit slightly recessed, like milled trays. */
+  --shadow-well: inset 0 1px 3px rgb(15 23 42 / 0.05), inset 0 0 0 1px rgb(15 23 42 / 0.03);
   /* The four "at a glance" tiles on the board, and the icon chips inside them. */
-  --shadow-tile: 0 1px 2px rgb(0 0 0 / 0.05), 0 12px 28px -12px rgb(0 0 0 / 0.22);
-  --shadow-tile-hover: 0 2px 4px rgb(0 0 0 / 0.06), 0 18px 36px -14px rgb(0 0 0 / 0.3);
-  --shadow-chip: 0 1px 1px rgb(0 0 0 / 0.06), 0 5px 12px -3px rgb(0 0 0 / 0.2);
-  --shadow-pop: 0 18px 44px -18px rgb(0 0 0 / 0.22), 0 4px 12px -6px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.02);
+  --shadow-tile: inset 0 1px 0 var(--rim), 0 1px 2px rgb(15 23 42 / 0.06), 0 6px 14px -6px rgb(15 23 42 / 0.1), 0 18px 36px -18px rgb(15 23 42 / 0.18);
+  --shadow-tile-hover: inset 0 1px 0 var(--rim-strong), 0 2px 4px rgb(15 23 42 / 0.07), 0 10px 20px -8px rgb(15 23 42 / 0.12), 0 26px 44px -20px rgb(15 23 42 / 0.26);
+  --shadow-chip: inset 0 1px 0 rgb(255 255 255 / 0.7), 0 1px 1px rgb(15 23 42 / 0.06), 0 5px 12px -3px rgb(15 23 42 / 0.2);
+  --shadow-pop: inset 0 1px 0 var(--rim), 0 18px 44px -18px rgb(15 23 42 / 0.24), 0 4px 12px -6px rgb(15 23 42 / 0.08), 0 0 0 1px rgb(15 23 42 / 0.03);
+
+  /* Primary buttons: obsidian glass (a vertical micro-gradient with a lit top edge), not flat ink. */
+  --obsidian: linear-gradient(180deg, #2b2b2f 0%, #0b0b0d 100%);
+  --obsidian-hover: linear-gradient(180deg, #37373d 0%, #141416 100%);
+  --obsidian-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 1px 2px rgb(0 0 0 / 0.22), 0 4px 10px -2px rgb(0 0 0 / 0.2);
+  --ruby: linear-gradient(180deg, #ef5c61 0%, #d63a40 100%);
+  --ruby-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 1px 2px rgb(150 20 25 / 0.3), 0 4px 10px -2px rgb(214 58 64 / 0.35);
+
+  /* The dashboard's backdrop: a solid, slightly deeper grey (lit softly from above) for the 3D panels to rise from. */
+  --canvas: radial-gradient(1400px 520px at 50% -12%, rgb(255 255 255 / 0.55), transparent 70%), #dde0e5;
+
+  /*
+   * 3D panels (the board and the sidebar). They read as solid blocks coming out of the screen:
+   * a lit top edge, a darker lower edge, a visible thickness (the solid offset under the panel),
+   * then contact, mid and far shadows.
+   */
+  --slab-side: #c3c8d0;
+  --slab-side-2: #d3d7dd;
+  --shadow-slab:
+    inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -1px 0 rgb(15 23 42 / 0.06), 0 0 0 1px rgb(15 23 42 / 0.07), 0 3px 0 -1px var(--slab-side-2), 0 7px 0 -1px var(--slab-side),
+    0 8px 8px -2px rgb(15 23 42 / 0.16), 0 18px 30px -10px rgb(15 23 42 / 0.2), 0 40px 70px -24px rgb(15 23 42 / 0.32), 0 70px 120px -40px rgb(15 23 42 / 0.28);
+  --shadow-slab-sm:
+    inset 0 1px 0 rgb(255 255 255 / 1), inset 0 -1px 0 rgb(15 23 42 / 0.06), 0 0 0 1px rgb(15 23 42 / 0.07), 0 3px 0 -1px var(--slab-side-2), 0 5px 0 -1px var(--slab-side),
+    0 6px 6px -2px rgb(15 23 42 / 0.14), 0 16px 26px -10px rgb(15 23 42 / 0.18), 0 32px 56px -24px rgb(15 23 42 / 0.26);
 }
 
 /*
@@ -101,14 +142,38 @@ html[data-theme='dark'] {
   --color-avatar-5: #2c3543;
   --color-avatar-6: #3a3627;
 
-  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.02) inset, 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.5);
-  --shadow-card-hover: 0 1px 2px rgb(0 0 0 / 0.48), 0 8px 18px -10px rgb(0 0 0 / 0.68);
-  --shadow-well: inset 0 1px 4px rgb(0 0 0 / 0.22), 0 1px 0 rgb(255 255 255 / 0.025);
-  --shadow-float: 0 24px 60px -24px rgb(0 0 0 / 0.75), 0 2px 6px rgb(0 0 0 / 0.35);
-  --shadow-tile: 0 1px 2px rgb(0 0 0 / 0.5), 0 14px 30px -12px rgb(0 0 0 / 0.75);
-  --shadow-tile-hover: 0 2px 4px rgb(0 0 0 / 0.55), 0 20px 40px -14px rgb(0 0 0 / 0.85);
-  --shadow-chip: 0 1px 1px rgb(0 0 0 / 0.5), 0 5px 12px -3px rgb(0 0 0 / 0.65);
-  --shadow-pop: 0 18px 44px -16px rgb(0 0 0 / 0.7), 0 4px 12px -6px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.03);
+  --color-panel: #151514;
+  --color-slate: #94a3b8;
+
+  --edge: rgb(255 255 255 / 0.07);
+  --rim: rgb(255 255 255 / 0.12);
+  --rim-strong: rgb(255 255 255 / 0.22);
+  --shadow-card: inset 0 1px 0 var(--rim), 0 1px 2px rgb(0 0 0 / 0.45), 0 6px 16px -6px rgb(0 0 0 / 0.55);
+  --shadow-card-hover: inset 0 1px 0 var(--rim-strong), 0 2px 4px rgb(0 0 0 / 0.5), 0 18px 32px -10px rgb(0 0 0 / 0.75);
+  --shadow-float: inset 0 1px 0 var(--rim), 0 0 0 1px rgb(255 255 255 / 0.04), 0 8px 20px -8px rgb(0 0 0 / 0.5), 0 32px 64px -24px rgb(0 0 0 / 0.85);
+  --shadow-shell: 0 0 0 1px rgb(255 255 255 / 0.06), 0 4px 12px rgb(0 0 0 / 0.45), 0 28px 60px -12px rgb(0 0 0 / 0.8);
+  --shadow-well: inset 0 1px 3px rgb(0 0 0 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.03);
+  --shadow-tile: inset 0 1px 0 var(--rim), 0 1px 2px rgb(0 0 0 / 0.5), 0 14px 30px -12px rgb(0 0 0 / 0.75);
+  --shadow-tile-hover: inset 0 1px 0 var(--rim-strong), 0 2px 4px rgb(0 0 0 / 0.55), 0 20px 40px -14px rgb(0 0 0 / 0.85);
+  --shadow-chip: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 1px 1px rgb(0 0 0 / 0.5), 0 5px 12px -3px rgb(0 0 0 / 0.65);
+  --shadow-pop: inset 0 1px 0 var(--rim), 0 18px 44px -16px rgb(0 0 0 / 0.7), 0 4px 12px -6px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.04);
+
+  /* In the dark, primary buttons are porcelain: light glass with a bright top edge. */
+  --obsidian: linear-gradient(180deg, #ffffff 0%, #d9d9d3 100%);
+  --obsidian-hover: linear-gradient(180deg, #ffffff 0%, #e7e7e2 100%);
+  --obsidian-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px -2px rgb(0 0 0 / 0.55);
+  --ruby: linear-gradient(180deg, #f2666b 0%, #d8444a 100%);
+  --ruby-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px -2px rgb(0 0 0 / 0.55);
+
+  --canvas: radial-gradient(1400px 520px at 50% -12%, rgb(255 255 255 / 0.05), transparent 70%), #050506;
+
+  --slab-side: #000000;
+  --shadow-slab:
+    inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.07), 0 3px 0 -1px #121214, 0 7px 0 -1px #0b0b0d,
+    0 8px 8px -2px rgb(0 0 0 / 0.6), 0 18px 30px -10px rgb(0 0 0 / 0.7), 0 40px 70px -24px rgb(0 0 0 / 0.85), 0 70px 120px -40px rgb(0 0 0 / 0.8);
+  --shadow-slab-sm:
+    inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 -1px 0 rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.07), 0 3px 0 -1px #121214, 0 5px 0 -1px #0b0b0d,
+    0 6px 6px -2px rgb(0 0 0 / 0.6), 0 16px 26px -10px rgb(0 0 0 / 0.7), 0 32px 56px -24px rgb(0 0 0 / 0.8);
 }
 
 /* Switching theme: colours ease across instead of snapping (the View Transition wipe takes over where supported). */
@@ -195,4 +260,115 @@ html.theme-switching *::after {
    about 6% (16px → 17px base), while spacing (px) keeps the layout as it is. */
 html[data-scope='app'] {
   font-size: 106.25%;
+}
+
+/* ─────────────────────────────── Dashboard materials ─────────────────────────────── */
+
+@layer components {
+  /* A lit surface: faint hairline sides, a bright top rim, contact + ambient shadows. */
+  .surface {
+    background-color: var(--color-paper);
+    border: 1px solid var(--edge);
+    border-top-color: var(--rim);
+    box-shadow: var(--shadow-card);
+    background-clip: padding-box;
+  }
+
+  /* Lifts 2px toward you on hover; its shadow grows and its top edge catches more light. */
+  .lift {
+    transition:
+      transform 0.24s var(--ease-spring),
+      box-shadow 0.24s ease,
+      border-color 0.24s ease;
+  }
+  @media (hover: hover) {
+    .lift:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-card-hover);
+      border-top-color: var(--rim-strong);
+    }
+  }
+
+  /* A recessed tray (board columns). */
+  .well {
+    box-shadow: var(--shadow-well);
+  }
+
+  /* Obsidian glass for primary actions (porcelain in the dark theme). */
+  .obsidian {
+    background-image: var(--obsidian);
+    box-shadow: var(--obsidian-shadow);
+    color: var(--color-milk);
+  }
+  .obsidian:hover {
+    background-image: var(--obsidian-hover);
+  }
+  .ruby {
+    background-image: var(--ruby);
+    box-shadow: var(--ruby-shadow);
+    color: #fff;
+  }
+
+  /* A status dot with a soft halo in its own colour (set the colour with text-*). */
+  .glow {
+    background-color: currentColor;
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, currentColor 16%, transparent),
+      0 0 8px 1px color-mix(in srgb, currentColor 45%, transparent);
+  }
+
+  /* The board on wide screens: a solid 3D panel rising out of the screen. */
+  .shell {
+    @media (width >= 64rem) {
+      margin: 14px 16px 22px 14px;
+      min-height: calc(100dvh - 36px);
+      border-radius: 24px;
+      background-color: var(--color-panel);
+      box-shadow: var(--shadow-slab);
+      overflow: clip;
+      animation: slab-rise 0.7s var(--ease-spring) backwards;
+    }
+  }
+
+  /* The sidebar on wide screens: the same kind of 3D panel, a little lower. */
+  .slab-side {
+    @media (width >= 64rem) {
+      margin: 14px 0 22px 16px;
+      border-radius: 24px;
+      background-color: var(--color-panel);
+      box-shadow: var(--shadow-slab-sm);
+      animation: slab-rise 0.6s var(--ease-spring) backwards;
+    }
+  }
+
+  /* Phone top and bottom bars: solid, with a shadow that lifts them off the page. */
+  .bar {
+    background-color: var(--color-panel);
+  }
+}
+
+/* The panels rise into place once, as the dashboard opens. */
+@keyframes slab-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    box-shadow: 0 0 0 1px rgb(15 23 42 / 0.05), 0 2px 4px rgb(15 23 42 / 0.06);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .slab-side {
+    animation: none !important;
+  }
+}
+
+/* The dashboard: ambient canvas, and numbers that line up (counters, times, dates). */
+html[data-scope='app'] body {
+  background: var(--canvas);
+  background-attachment: fixed;
+  font-variant-numeric: tabular-nums;
 }

@@ -42,11 +42,11 @@ type Variant = 'primary' | 'outline' | 'ghost' | 'danger' | 'soft';
 type Size = 'sm' | 'md' | 'lg';
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-ink text-milk hover:bg-ink/90 border border-ink',
+  primary: 'obsidian border border-transparent',
   outline: 'border border-ink/80 text-ink hover:bg-ink hover:text-milk',
   ghost: 'text-ink-2 hover:bg-ink/5 border border-transparent',
-  danger: 'bg-s-open text-white hover:brightness-95 border border-s-open',
-  soft: 'bg-paper text-ink border border-line hover:border-line-2 shadow-[var(--shadow-card)]',
+  danger: 'ruby border border-transparent hover:brightness-105',
+  soft: 'surface text-ink hover:border-line-2',
 };
 const sizes: Record<Size, string> = {
   sm: 'h-8 px-3.5 text-[0.8125rem] gap-1.5',
@@ -95,18 +95,19 @@ export function Pill({ children, className }: { children: ReactNode; className?:
 /* ---------------------------------- Status ---------------------------------- */
 
 const toneClasses = {
-  red: { dot: 'bg-s-open', soft: 'bg-s-open-soft text-s-open-ink' },
-  amber: { dot: 'bg-s-active', soft: 'bg-s-active-soft text-s-active-ink' },
-  green: { dot: 'bg-s-done', soft: 'bg-s-done-soft text-s-done-ink' },
-  blue: { dot: 'bg-s-approved', soft: 'bg-s-approved-soft text-s-approved-ink' },
+  red: { dot: 'bg-s-open', text: 'text-s-open', soft: 'bg-s-open-soft text-s-open-ink' },
+  amber: { dot: 'bg-s-active', text: 'text-s-active', soft: 'bg-s-active-soft text-s-active-ink' },
+  green: { dot: 'bg-s-done', text: 'text-s-done', soft: 'bg-s-done-soft text-s-done-ink' },
+  blue: { dot: 'bg-s-approved', text: 'text-s-approved', soft: 'bg-s-approved-soft text-s-approved-ink' },
 } as const;
 
-export function StatusDot({ status, pulse, className }: { status: TaskStatus; pulse?: boolean; className?: string }) {
+/** A status dot. `glow` adds a soft halo in its colour (used for work that's moving). */
+export function StatusDot({ status, pulse, glow, className }: { status: TaskStatus; pulse?: boolean; glow?: boolean; className?: string }) {
   const tone = STATUS_META[status].tone;
   return (
     <span className={cx('relative inline-flex size-2', className)}>
       {pulse && <span className={cx('absolute inline-flex size-full animate-ping rounded-full opacity-60', toneClasses[tone].dot)} />}
-      <span className={cx('relative inline-flex size-2 rounded-full', toneClasses[tone].dot)} />
+      <span className={cx('relative inline-flex size-2 rounded-full', glow ? cx('glow', toneClasses[tone].text) : toneClasses[tone].dot)} />
     </span>
   );
 }
@@ -291,7 +292,7 @@ export function FullPageSpinner() {
 
 export function Card({ children, className, ...rest }: { children: ReactNode; className?: string; ref?: React.Ref<HTMLDivElement> } & React.HTMLAttributes<HTMLDivElement> & { 'data-testid'?: string }) {
   return (
-    <div className={cx('rounded-2xl border border-line bg-paper shadow-[var(--shadow-card)]', className)} {...rest}>
+    <div className={cx('surface rounded-2xl', className)} {...rest}>
       {children}
     </div>
   );
@@ -319,7 +320,7 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   return (
-    <div className={cx('relative inline-flex rounded-full border border-line bg-paper p-1', className)} role="tablist">
+    <div className={cx('well relative inline-flex rounded-full bg-milk-2/60 p-1', className)} role="tablist">
       {options.map((o) => (
         <button
           key={o.value}
@@ -329,7 +330,7 @@ export function Segmented<T extends string>({
           className={cx('relative z-10 h-7 rounded-full px-3 text-[0.8125rem] font-medium transition-colors', value === o.value ? 'text-milk' : 'text-mute hover:text-ink')}
         >
           {value === o.value && (
-            <motion.span layoutId={`seg-${options.map((x) => x.value).join('')}`} className="absolute inset-0 -z-10 rounded-full bg-ink" transition={{ duration: 0.35, ease: EASE }} />
+            <motion.span layoutId={`seg-${options.map((x) => x.value).join('')}`} className="obsidian absolute inset-0 -z-10 rounded-full" transition={{ type: 'spring', stiffness: 480, damping: 36 }} />
           )}
           {o.label}
         </button>

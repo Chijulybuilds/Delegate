@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { card, choose, loginAs, resetDemo } from './helpers';
 
-test.describe('Waiting on me and Audits', () => {
+test.describe('History and Audits', () => {
   test.beforeEach(async ({ request }) => {
     await resetDemo(request);
   });
 
-  test('earlier days wait on the owner, laid out like Today, by day and time of day', async ({ page }) => {
+  test('earlier days are the owner’s History, laid out like Today, by day and time of day', async ({ page }) => {
     // Staff don't get earlier days at all.
     await loginAs(page, 'demo-tunde');
     await expect(page.getByTestId('nav-waiting')).toHaveCount(0);
@@ -17,7 +17,7 @@ test.describe('Waiting on me and Audits', () => {
     await expect(page.getByTestId('earlier-days')).toContainText('unfinished');
     await page.getByTestId('glance-waitingOnMe').click();
     await expect(page).toHaveURL(/\/app\/waiting/);
-    await expect(page.getByRole('heading', { name: 'Waiting on me' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
 
     // The same four lanes as Today, holding every earlier task.
     for (const id of ['open', 'active', 'done', 'approved']) await expect(page.getByTestId(`lane-${id}`)).toBeVisible();

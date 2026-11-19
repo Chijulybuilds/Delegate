@@ -77,14 +77,14 @@ export default function AppShell() {
   const badge: Record<string, number> = { Today: newsToday, History: role === 'owner' ? newsEarlier : 0 };
 
   return (
-    <div className="min-h-dvh bg-milk lg:grid lg:grid-cols-[240px_1fr]">
-      {/* Sidebar (desktop) */}
-      <aside className="sticky top-0 hidden h-dvh flex-col border-r border-line bg-milk px-4 py-5 lg:flex">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[256px_1fr]">
+      {/* Sidebar (desktop): a solid 3D panel */}
+      <aside className="slab-side sticky top-0 z-40 hidden h-dvh flex-col px-4 py-5 lg:top-[14px] lg:flex lg:h-[calc(100dvh-36px)]">
         <div className="flex items-center justify-between px-2">
           <Logo />
           <NotificationBell />
         </div>
-        <div className="mt-6 rounded-2xl border border-line bg-paper px-3 py-2.5">
+        <div className="surface mt-6 rounded-2xl px-3 py-2.5">
           <p className="truncate text-sm font-medium" data-testid="workspace-name">
             {ws.data.org.name}
           </p>
@@ -99,20 +99,20 @@ export default function AppShell() {
               to={n.to}
               end={n.end}
               className={({ isActive }) =>
-                cx('relative flex h-11 items-center gap-3 rounded-xl px-3 text-[0.875rem] transition-colors duration-300', isActive ? 'font-medium text-milk' : 'text-mute hover:bg-ink/[0.05] hover:text-ink')
+                cx('relative flex h-11 items-center gap-3 rounded-xl px-3 text-[0.875rem] transition-colors duration-300', isActive ? 'font-medium text-milk' : 'text-ink-2/80 hover:bg-ink/[0.05] hover:text-ink')
               }
               data-testid={`nav-${navId(n.to)}`}
             >
               {({ isActive }) => (
                 <>
                   {/* The current page: a black pill that glides between items */}
-                  {isActive && <motion.span layoutId="nav-active" className="absolute inset-0 rounded-xl bg-ink shadow-[0_6px_18px_-6px_rgb(0_0_0/0.45)]" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
+                  {isActive && <motion.span layoutId="nav-active" className="obsidian absolute inset-0 rounded-xl" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
                   <n.icon className="relative size-[17px]" strokeWidth={1.8} />
                   <span className="relative">{n.label}</span>
                   {n.label === 'Activity' && (
-                    <span className="relative ml-auto flex size-2">
+                    <span className="relative ml-auto flex size-2 text-s-done">
                       <span className="absolute inline-flex size-full animate-ping rounded-full bg-s-done opacity-60" />
-                      <span className="relative inline-flex size-2 rounded-full bg-s-done" />
+                      <span className="glow relative inline-flex size-2 rounded-full" />
                     </span>
                   )}
                   {(badge[n.label] ?? 0) > 0 && (
@@ -138,7 +138,7 @@ export default function AppShell() {
       </aside>
 
       {/* Top bar (mobile) */}
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-milk/85 px-4 backdrop-blur-xl lg:hidden">
+      <header className="bar sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[var(--edge)] px-4 shadow-[0_6px_16px_-8px_rgb(15_23_42/0.22)] lg:hidden">
         <div className="flex min-w-0 items-center gap-2">
           <LogoMark className="size-7 shrink-0" />
           <span className="truncate text-[0.9375rem] font-medium tracking-[-0.02em]">{ws.data.org.name}</span>
@@ -149,7 +149,8 @@ export default function AppShell() {
         </div>
       </header>
 
-      <main className="min-w-0 pb-24 lg:pb-0">
+      {/* The board: a solid 3D panel coming out of the screen (wide screens) */}
+      <main className="shell min-w-0 pb-24 lg:pb-0">
         <TrialBanner />
         <motion.div key={location.pathname} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }}>
           <Outlet />
@@ -157,17 +158,17 @@ export default function AppShell() {
       </main>
 
       {/* Bottom tabs (mobile) */}
-      <nav className="scrollbar-none fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-line bg-milk/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Workspace">
+      <nav className="scrollbar-none fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-[var(--edge)] bar pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_-10px_rgb(15_23_42/0.25)] lg:hidden" aria-label="Workspace">
         {nav.map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
             end={n.end}
-            className={({ isActive }) => cx('relative flex h-14 min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 text-[0.625rem]', isActive ? 'font-medium text-ink' : 'text-faint')}
+            className={({ isActive }) => cx('relative flex h-14 min-w-[76px] flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap text-[0.625rem]', isActive ? 'font-medium text-ink' : 'text-faint')}
           >
             {({ isActive }) => (
               <>
-                <span className={cx('grid h-7 w-11 place-items-center rounded-full transition-colors', isActive && 'bg-ink text-milk')}>
+                <span className={cx('grid h-7 w-11 place-items-center rounded-full transition-colors', isActive && 'obsidian')}>
                   <n.icon className="size-[17px]" strokeWidth={1.8} />
                 </span>
                 {n.label}
@@ -347,7 +348,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
     <div className="flex flex-wrap items-end justify-between gap-4 px-4 pb-5 pt-6 sm:px-8 lg:pt-9">
       <div>
         {title && <h1 className="text-[1.9rem] font-medium leading-none tracking-display sm:text-[2.3rem]">{title}</h1>}
-        {subtitle && <p className={title ? 'mt-2 text-sm text-mute' : 'text-sm text-mute'}>{subtitle}</p>}
+        {subtitle && <p className={title ? 'mt-2 text-sm text-slate' : 'text-sm text-slate'}>{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>

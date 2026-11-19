@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * Delegate's notification sound (public/sounds/delegate-notification.mp3: a soft two-note rise,
- * made for Delegate). It plays when news arrives — a new task, a message on a task, a blocker
- * ping, an audit. People can switch it off in the avatar menu; the choice is kept per browser.
+ * Delegate's notification sound (public/sounds/delegate-notification.mp3: a doorbell "ding-dong",
+ * trimmed and levelled for notifications). It plays when news arrives — a new task, a message on a
+ * task, a blocker ping, an audit. People can switch it off in the avatar menu; the choice is kept per browser.
  *
  * Browsers only allow sound after someone has clicked or typed on the page, so the audio is
  * unlocked on the first interaction and the file is decoded once.
