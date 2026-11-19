@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { App } from './App';
 import { ToastProvider } from './components/Toast';
+import { UpdateNotice } from './components/UpdateNotice';
 import { AuthProvider } from './lib/auth';
 
 const queryClient = new QueryClient({
@@ -22,6 +23,7 @@ createRoot(document.getElementById('root')!).render(
           <AuthProvider>
             <App />
           </AuthProvider>
+          <UpdateNotice />
         </ToastProvider>
       </BrowserRouter>
     </QueryClientProvider>

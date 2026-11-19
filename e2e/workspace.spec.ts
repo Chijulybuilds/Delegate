@@ -97,14 +97,18 @@ test.describe('Collaboration', () => {
     await expect(page.getByTestId('chat-list')).toContainText('Looks sharp — send it to the board by five.');
   });
 
-  test('filters narrow the board without losing it', async ({ page }) => {
+  test('staff see only their own work; the owner sees everyone and can filter by person', async ({ page }) => {
     await loginAs(page, 'demo-tunde');
-    await page.getByRole('tab', { name: 'Mine' }).click();
-    // Cards that leave animate out; wait for the board to settle on Tunde's work only.
+    await expect(page.getByTestId('task-card').first()).toBeVisible();
     await expect(page.getByTestId('task-card').filter({ hasNotText: 'Tunde' })).toHaveCount(0);
-    await expect(page.getByTestId('task-card').filter({ hasText: 'Tunde' }).first()).toBeVisible();
-    await page.getByRole('tab', { name: 'Everyone' }).click();
+    await expect(page.getByRole('tab', { name: 'Everyone' })).toHaveCount(0); // no team filters for staff
+    await expect(page.getByTestId('nav-audits')).toHaveCount(0);
+
+    await loginAs(page, 'demo-ada');
     await expect(page.getByTestId('task-card').filter({ hasText: 'Maya' }).first()).toBeVisible();
+    await expect(page.getByTestId('task-card').filter({ hasText: 'Tunde' }).first()).toBeVisible();
+    await choose(page, 'filter-person', 'demo-maya');
+    await expect(page.getByTestId('task-card').filter({ hasNotText: 'Maya' })).toHaveCount(0);
   });
 
   test('Velocity Pulse and Standup-in-a-Box render from the ledger', async ({ page }) => {
@@ -160,7 +164,9 @@ test.describe('Sign-up and onboarding', () => {
     await page.getByRole('button', { name: 'Join workspace' }).click();
     await page.waitForURL('**/app');
     await expect(page.getByTestId('workspace-name')).toHaveText('Lumen & Co.');
-    await expect(card(page, 'Finalize Q4 board deck')).toBeVisible();
+    // A new teammate sees only their own work: nothing yet, and none of the others' tasks.
+    await expect(page.getByText('Your board is empty')).toBeVisible();
+    await expect(card(page, 'Finalize Q4 board deck')).toHaveCount(0);
     // Staff cannot assign work to other people.
     await page.getByTestId('new-task').click();
     await expect(page.getByTestId('task-assignee')).toBeDisabled();

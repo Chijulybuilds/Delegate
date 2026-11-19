@@ -92,6 +92,19 @@ test.describe('Email and password', () => {
     expect(verify.body).toMatchObject({ email: 'bisi@lumen.example', token: '482913' });
   });
 
+  test('when the email can’t be sent, people get a plain explanation, not a server error', async ({ page }) => {
+    await supabaseMode(page, (route, path) =>
+      path.startsWith('/auth/v1/signup') ? fail(route, 500, 'unexpected_failure', 'Error sending confirmation email') : route.fulfill({ status: 404, json: {} }),
+    );
+    await page.goto('/login?intent=signup');
+    await page.getByTestId('auth-fullname').fill('Susan Obi');
+    await page.getByTestId('auth-email').fill('susan@lumen.example');
+    await page.getByTestId('auth-password').fill('Lagos-Sunrise-42');
+    await page.getByTestId('auth-submit').click();
+    await expect(page.getByTestId('auth-error')).toContainText('We couldn’t send the email just now');
+    await expect(page.getByTestId('auth-error')).not.toContainText('Error sending');
+  });
+
   test('an address that already has an account is pointed to log in or reset', async ({ page }) => {
     await supabaseMode(page, (route, path) => (path.startsWith('/auth/v1/signup') ? route.fulfill({ json: user('ada@lumen.example', 0) }) : route.fulfill({ status: 404, json: {} })));
     await page.goto('/login?intent=signup');

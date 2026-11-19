@@ -15,6 +15,8 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const AppShell = lazy(() => import('./app/AppShell'));
 const BoardPage = lazy(() => import('./app/BoardPage'));
 const HeartbeatPage = lazy(() => import('./app/HeartbeatPage'));
+const HistoryPage = lazy(() => import('./app/HistoryPage'));
+const AuditsPage = lazy(() => import('./app/AuditsPage'));
 const InsightsPage = lazy(() => import('./app/InsightsPage'));
 const PlaybooksPage = lazy(() => import('./app/PlaybooksPage'));
 const TeamPage = lazy(() => import('./app/TeamPage'));
@@ -65,6 +67,8 @@ export function App() {
           }
         >
           <Route index element={<BoardPage />} />
+          <Route path="history" element={<HistoryPage />} />
+          <Route path="audits" element={<AuditsPage />} />
           <Route path="activity" element={<HeartbeatPage />} />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="playbooks" element={<PlaybooksPage />} />

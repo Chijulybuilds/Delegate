@@ -1,11 +1,12 @@
 import { isManagerRole } from '@delegate/shared';
-import { ChevronsUpDown, CreditCard, DoorOpen, LogOut, Monitor, Moon, Settings, Sun, UserRound, type LucideIcon } from 'lucide-react';
+import { BellRing, BellOff, ChevronsUpDown, CreditCard, DoorOpen, LogOut, Monitor, Moon, Settings, Sun, UserRound, type LucideIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { Popover } from '../components/Popover';
 import { Avatar, cx } from '../components/ui';
 import { useAuth } from '../lib/auth';
+import { setSoundOn, useSoundOn } from '../lib/sound';
 import { setThemePref, useThemePref, type ThemePref } from '../lib/theme';
 import type { WorkspaceData } from './data';
 
@@ -24,6 +25,7 @@ const ROLE = { owner: 'Owner', manager: 'Manager', member: 'Staff' } as const;
 export function UserMenu({ ws, variant }: { ws: WorkspaceData; variant: 'sidebar' | 'avatar' }) {
   const { me, signOut } = useAuth();
   const { pref } = useThemePref();
+  const sound = useSoundOn();
   const navigate = useNavigate();
   const uid = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -128,6 +130,20 @@ export function UserMenu({ ws, variant }: { ws: WorkspaceData; variant: 'sidebar
               })}
             </div>
           </div>
+
+          <button
+            role="menuitemcheckbox"
+            aria-checked={sound}
+            onClick={() => setSoundOn(!sound)}
+            className="mx-1 mt-1.5 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-ink-2 outline-none transition-colors hover:bg-ink/[0.05] hover:text-ink focus-visible:bg-ink/[0.05]"
+            data-testid="sound-toggle"
+          >
+            {sound ? <BellRing className="size-4" /> : <BellOff className="size-4 text-faint" />}
+            <span className="flex-1">Notification sound</span>
+            <span className={cx('relative h-5 w-9 rounded-full transition-colors duration-300', sound ? 'bg-ink' : 'bg-line-2')}>
+              <motion.span className="absolute top-0.5 size-4 rounded-full bg-paper shadow" animate={{ left: sound ? 18 : 2 }} transition={{ type: 'spring', stiffness: 600, damping: 32 }} />
+            </span>
+          </button>
 
           <div className="mt-1.5 border-t border-line pt-1.5" onMouseLeave={() => setHover(null)}>
             {items.map((it) => (

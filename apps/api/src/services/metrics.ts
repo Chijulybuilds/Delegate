@@ -1,4 +1,4 @@
-import { hoursBetween, type Member, type StandupBrief, type Task, type VelocityResponse, type VelocityRow } from '@delegate/shared';
+import { canSeeTask, hoursBetween, type Member, type MemberRole, type StandupBrief, type Task, type VelocityResponse, type VelocityRow } from '@delegate/shared';
 import type { Store } from '../store/types.js';
 
 const DAY = 86_400_000;
@@ -38,13 +38,24 @@ function tzOffsetMs(date: Date, tz: string): number {
   return asUtc - date.getTime();
 }
 
+type Viewer = { userId: string; role: MemberRole };
+
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
 export class MetricsService {
   constructor(private store: Store) {}
 
-  async velocity(orgId: string, windowDays: number): Promise<VelocityResponse> {
-    const [tasks, members] = await Promise.all([this.store.listTasks({ orgId }), this.store.listMembers(orgId)]);
+  /** Everyone but the owner gets numbers for the tasks they can see (their own and those they handed out). */
+  private async scoped(orgId: string, viewer?: Viewer) {
+    const [all, everyone] = await Promise.all([this.store.listTasks({ orgId }), this.store.listMembers(orgId)]);
+    if (!viewer || viewer.role === 'owner') return { tasks: all, members: everyone };
+    const tasks = all.filter((t) => canSeeTask(viewer, t));
+    const people = new Set([viewer.userId, ...tasks.map((t) => t.assigneeId)]);
+    return { tasks, members: everyone.filter((m) => people.has(m.userId)) };
+  }
+
+  async velocity(orgId: string, windowDays: number, viewer?: Viewer): Promise<VelocityResponse> {
+    const { tasks, members } = await this.scoped(orgId, viewer);
     const since = Date.now() - windowDays * DAY;
     const shipped = tasks.filter((t) => t.submittedAt && new Date(t.submittedAt).getTime() >= since);
 
@@ -102,9 +113,10 @@ export class MetricsService {
     };
   }
 
-  async standup(orgId: string, now = new Date()): Promise<StandupBrief> {
+  async standup(orgId: string, now = new Date(), viewer?: Viewer): Promise<StandupBrief> {
     const org = await this.store.getOrg(orgId);
-    const [tasks, members] = await Promise.all([this.store.listTasks({ orgId }), this.store.listMembers(orgId)]);
+    const { tasks } = await this.scoped(orgId, viewer);
+    const members = await this.store.listMembers(orgId);
     const tz = org?.timezone || 'UTC';
     const todayStart = startOfDayInTz(now, tz).getTime();
     const yesterdayStart = startOfDayInTz(new Date(todayStart - DAY / 2), tz).getTime();

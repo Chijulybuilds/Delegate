@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  AppNotification,
+  AuditFilters,
+  AuditsResponse,
   BillingOverview,
+  BoardResponse,
+  HistoryResponse,
+  NotificationsResponse,
+  TaskFilters,
   Department,
   Entitlements,
   IntegrationsOverview,
@@ -31,11 +36,7 @@ export interface WorkspaceData {
   me: { userId: string; role: MemberRole; departmentId: string | null };
 }
 
-export interface BoardData {
-  tasks: Task[];
-  aiVerdicts: Record<string, TaskProof['aiVerdict']>;
-  verified: Record<string, ProofSource>;
-}
+export type BoardData = BoardResponse;
 
 const LIVE_MS = 5_000;
 
@@ -198,8 +199,8 @@ export function useIntegrations() {
 export function useNotifications() {
   return useQuery({
     queryKey: ['notifications'],
-    queryFn: () => api.get<{ notifications: AppNotification[]; unread: number }>('/notifications'),
-    refetchInterval: 10_000,
+    queryFn: () => api.get<NotificationsResponse>('/notifications'),
+    refetchInterval: 8_000,
   });
 }
 
@@ -210,6 +211,49 @@ export function useMarkRead() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 }
+
+/** Opening a task clears the red badge on its card (its unread messages and updates). */
+export function useMarkTaskRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) => api.post('/notifications/read', { taskId }),
+    onMutate: (taskId) => {
+      qc.setQueryData<NotificationsResponse>(['notifications'], (old) => {
+        if (!old?.tasks[taskId]) return old;
+        const tasks = { ...old.tasks };
+        delete tasks[taskId];
+        return { ...old, tasks };
+      });
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+const toQuery = (f: Record<string, string | number | undefined>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') q.set(k, String(v));
+  return q.toString();
+};
+
+export function useHistory(f: TaskFilters, page: number) {
+  return useQuery({
+    queryKey: ['history', f, page],
+    queryFn: () => api.get<HistoryResponse>(`/history?${toQuery({ ...f, page })}`),
+    placeholderData: (prev) => prev,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAudits(f: AuditFilters, page: number, enabled = true) {
+  return useQuery({
+    queryKey: ['audits', f, page],
+    queryFn: () => api.get<AuditsResponse>(`/audits?${toQuery({ ...f, page })}`),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+}
+
+export const auditsExportPath = (f: AuditFilters) => `/audits/export?${toQuery({ ...f })}`;
 
 export function usePlaybooks() {
   return useQuery({ queryKey: ['playbooks'], queryFn: () => api.get<{ playbooks: Playbook[] }>('/playbooks') });

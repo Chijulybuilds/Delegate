@@ -148,8 +148,12 @@ export interface Store {
 
   // In-app notifications
   insertNotifications(list: Array<Omit<AppNotification, 'id' | 'createdAt' | 'readAt'>>): Promise<void>;
-  listNotifications(userId: string, limit: number): Promise<AppNotification[]>;
-  markNotificationsRead(userId: string, ids: string[] | 'all'): Promise<void>;
+  /** Newest first. `general` = only those not about a task (task news shows on the task itself). */
+  listNotifications(userId: string, limit: number, scope?: 'all' | 'general'): Promise<AppNotification[]>;
+  /** Every unread notification of the person (newest first, capped). */
+  listUnreadNotifications(userId: string): Promise<AppNotification[]>;
+  /** `'all'` marks the general ones read; `{ taskId }` everything about that task. */
+  markNotificationsRead(userId: string, ids: string[] | 'all' | { taskId: string }): Promise<void>;
 
   // Playbooks
   listPlaybooks(orgId?: string): Promise<Playbook[]>;

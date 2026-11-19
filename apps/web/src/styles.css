@@ -21,6 +21,11 @@
   --color-s-done-soft: #e6f4ec;
   --color-s-approved: #2b7fff;
   --color-s-approved-soft: #e7f0ff;
+  /* Lane header washes on the board (Open, In motion, Executed, Audited). */
+  --color-s-open-tint: #f6d2d2;
+  --color-s-active-tint: #f7e0b4;
+  --color-s-done-tint: #cdebd8;
+  --color-s-approved-tint: #d1e1f7;
 
   /* Text that sits on a status' soft background, and other theme-aware accents. */
   --color-ink-soft: #6d6d66;
@@ -69,6 +74,10 @@ html[data-theme='dark'] {
   --color-s-done-soft: rgb(47 158 106 / 0.17);
   --color-s-approved: #4a91ff;
   --color-s-approved-soft: rgb(43 127 255 / 0.17);
+  --color-s-open-tint: rgb(229 72 77 / 0.24);
+  --color-s-active-tint: rgb(232 163 23 / 0.22);
+  --color-s-done-tint: rgb(47 158 106 / 0.24);
+  --color-s-approved-tint: rgb(43 127 255 / 0.24);
 
   --color-s-open-ink: #ff9a9e;
   --color-s-active-ink: #f6c766;

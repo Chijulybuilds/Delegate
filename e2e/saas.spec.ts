@@ -98,7 +98,7 @@ test.describe('SaaS layer', () => {
     await expect(c).toContainText('Playbook');
   });
 
-  test('assignment notifications ring the bell', async ({ page }) => {
+  test('news about a task shows as a red badge on its card (with the Delegate sound), not in the bell', async ({ page, request }) => {
     const title = `Book the venue ${Date.now().toString(36)}`;
     await loginAs(page, 'demo-ada');
     await page.getByTestId('new-task').click();
@@ -108,13 +108,43 @@ test.describe('SaaS layer', () => {
     await expect(card(page, title)).toBeVisible();
 
     await loginAs(page, 'demo-tunde');
-    // The bell lives in the sidebar on desktop and in the top bar on phones.
-    await expect(page.locator('[data-testid="bell-count"]:visible')).toHaveText('1');
+    const mine = card(page, title);
+    await expect(mine.getByTestId('task-news')).toHaveText('1');
+    await expect(page.getByTestId('nav-news-today')).toHaveText('1');
+    // The bell only points at the badge; it doesn't list task news itself.
+    await expect(page.locator('[data-testid="bell-count"]:visible')).toHaveCount(0);
     await page.locator('[data-testid="bell"]:visible').click();
-    const panel = page.getByTestId('bell-panel');
-    await expect(panel).toContainText(title);
-    await panel.getByText(title).first().click();
+    await expect(page.getByTestId('bell-task-news')).toContainText('red badge');
+    await page.keyboard.press('Escape');
+
+    // Ada writes on the task while Tunde is looking at his board: the badge counts up and the chime plays.
+    await page.mouse.click(5, 5); // a click lets the browser play sound
+    const before = await page.evaluate(() => document.documentElement.dataset.notifySound ?? '');
+    const ada = (await (await request.post('/api/auth/demo', { data: { personaId: 'demo-ada' } })).json()).token;
+    const tasks = (await (await request.get('/api/tasks', { headers: { Authorization: `Bearer ${ada}` } })).json()).tasks as Array<{ id: string; title: string }>;
+    const taskId = tasks.find((t) => t.title === title)!.id;
+    await request.post(`/api/tasks/${taskId}/comments`, { headers: { Authorization: `Bearer ${ada}` }, data: { body: 'Can you book it for Friday?' } });
+    await expect(mine.getByTestId('task-news')).toHaveText('2', { timeout: 15_000 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.notifySound ?? '')).not.toBe(before);
+
+    // Opening the task reads it: the badge goes away and stays away.
+    await mine.click();
     await expect(page.getByTestId('drawer-title')).toHaveText(title);
+    await page.keyboard.press('Escape');
+    await expect(mine.getByTestId('task-news')).toHaveCount(0);
+    await page.reload();
+    await expect(card(page, title)).toBeVisible();
+    await expect(card(page, title).getByTestId('task-news')).toHaveCount(0);
+  });
+
+  test('the notification sound can be switched off', async ({ page }) => {
+    await loginAs(page, 'demo-tunde');
+    await page.getByTestId('user-menu').click();
+    const toggle = page.getByTestId('sound-toggle');
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(await page.evaluate(() => localStorage.getItem('delegate.sound'))).toBe('off');
   });
 
   test('glance numbers filter the board', async ({ page }) => {

@@ -1,10 +1,19 @@
 import {
   availableActions,
+  canSeeTask,
   DEFAULT_ORG_SETTINGS,
+  LANES,
   isManagerRole,
   taskRef,
   TRANSITIONS,
+  type AuditFilters,
+  type AuditRow,
+  type AuditsResponse,
+  type BoardResponse,
+  type HistoryResponse,
+  type TaskFilters,
   type EventType,
+  type LedgerEvent,
   type MemberRole,
   type Organization,
   type Profile,
@@ -23,6 +32,7 @@ import type { Store } from '../store/types.js';
 import type { ProofVerifier } from './ai.js';
 import { trialSubscription, type BillingService } from './billing.js';
 import type { DriveService } from './drive.js';
+import { startOfDayInTz } from './metrics.js';
 import type { DomainEvent, Notifier } from './notify.js';
 
 export interface Ctx {
@@ -72,8 +82,6 @@ const DEFAULT_DEPARTMENTS: Array<[string, string]> = [
   ['Creative', '#D9480F'],
 ];
 
-/** Board shows everything still moving plus recently audited work. */
-const BOARD_APPROVED_WINDOW_MS = 14 * 86_400_000;
 
 export interface WorkspaceDeps {
   store: Store;
@@ -187,25 +195,121 @@ export class WorkspaceService {
 
   /* -------------------------------- Tasks --------------------------------- */
 
-  async listBoard(ctx: Ctx): Promise<{ tasks: Task[]; aiVerdicts: Record<string, TaskProof['aiVerdict']>; verified: Record<string, ProofSource> }> {
-    const cutoff = new Date(Date.now() - BOARD_APPROVED_WINDOW_MS).toISOString();
-    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => t.status !== 'approved' || (t.approvedAt ?? t.updatedAt) >= cutoff);
+  /**
+   * Today's board. Every day starts empty: it shows only tasks given out today (in the workspace's
+   * time zone). Earlier days live on the History page; `earlier` counts what's still unfinished there.
+   */
+  async listBoard(ctx: Ctx): Promise<BoardResponse> {
+    const org = await this.store.getOrg(ctx.orgId);
+    const timezone = org?.timezone || 'UTC';
+    const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
+    const mine = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => canSeeTask(ctx, t));
+    const tasks = mine.filter((t) => t.createdAt >= dayStart);
+    const before = mine.filter((t) => t.createdAt < dayStart);
+    const visible = new Set(tasks.map((t) => t.id));
     // Latest AI verdict + verified source per task, so cards can badge without N+1 calls.
-    const proofs = await this.store.listProofsForOrg(ctx.orgId);
+    const proofs = (await this.store.listProofsForOrg(ctx.orgId)).filter((p) => visible.has(p.taskId));
     const aiVerdicts: Record<string, TaskProof['aiVerdict']> = {};
     const verified: Record<string, ProofSource> = {};
     for (const p of proofs.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
       if (p.aiVerdict) aiVerdicts[p.taskId] = p.aiVerdict;
       if (p.verified) verified[p.taskId] = p.source;
     }
-    return { tasks, aiVerdicts, verified };
+    return {
+      tasks,
+      aiVerdicts,
+      verified,
+      day: { start: dayStart, timezone },
+      earlier: {
+        unfinished: before.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked').length,
+        awaitingAudit: isManagerRole(ctx.role) ? before.filter((t) => t.status === 'done').length : 0,
+      },
+    };
   }
 
-  async getTaskForCtx(ctx: Pick<Ctx, 'orgId'>, id: string): Promise<Task> {
+  /** Loads a task for a person (visibility rules apply) or, with only `orgId`, for the system. */
+  async getTaskForCtx(ctx: Pick<Ctx, 'orgId'> & Partial<Pick<Ctx, 'userId' | 'role'>>, id: string): Promise<Task> {
     const task = await this.store.getTask(id);
-    // Same 404 for "missing" and "other tenant" so IDs can't be probed across workspaces.
+    // Same 404 for "missing", "other tenant" and "not yours to see", so IDs can't be probed.
     if (!task || task.orgId !== ctx.orgId) throw notFound('Task not found');
+    if (ctx.userId && ctx.role && !canSeeTask({ userId: ctx.userId, role: ctx.role }, task)) throw notFound('Task not found');
     return task;
+  }
+
+  /** The activity feed: everything for the owner; for everyone else, only events on tasks they can see. */
+  async feed(ctx: Ctx, q: { limit: number; before?: string }): Promise<LedgerEvent[]> {
+    if (ctx.role === 'owner') return this.store.listEvents({ orgId: ctx.orgId, limit: q.limit, before: q.before });
+    const visible = new Set((await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => canSeeTask(ctx, t)).map((t) => t.id));
+    const out: LedgerEvent[] = [];
+    let before = q.before;
+    for (let page = 0; page < 6 && out.length < q.limit; page++) {
+      const batch = await this.store.listEvents({ orgId: ctx.orgId, limit: 100, before });
+      out.push(...batch.filter((e) => (e.taskId ? visible.has(e.taskId) : e.actorId === ctx.userId)));
+      if (batch.length < 100) break;
+      before = batch[batch.length - 1]!.createdAt;
+    }
+    return out.slice(0, q.limit);
+  }
+
+  /** Names and departments for a list of tasks (people who left are looked up once). */
+  private async describeTasks(orgId: string, tasks: Task[]): Promise<AuditRow[]> {
+    const [members, departments] = await Promise.all([this.store.listMembers(orgId), this.store.listDepartments(orgId)]);
+    const names = new Map(members.map((m) => [m.userId, m.fullName]));
+    for (const id of new Set(tasks.flatMap((t) => [t.assigneeId, t.createdById, t.approvedById]).filter((x): x is string => !!x && !names.has(x)))) {
+      names.set(id, (await this.store.getProfile(id))?.fullName ?? 'Former member');
+    }
+    const dept = new Map(departments.map((d) => [d.id, d.name]));
+    return tasks.map((t) => ({
+      task: t,
+      assigneeName: names.get(t.assigneeId) ?? 'Former member',
+      creatorName: names.get(t.createdById) ?? 'Former member',
+      auditorName: t.approvedById ? (names.get(t.approvedById) ?? 'Former member') : null,
+      departmentName: t.departmentId ? (dept.get(t.departmentId) ?? null) : null,
+      hoursToGreen: t.submittedAt ? Math.max(0, (Date.parse(t.submittedAt) - Date.parse(t.createdAt)) / 3_600_000) : null,
+    }));
+  }
+
+  /** Search box + person + priority + status + date range, shared by History and Audits. */
+  private filterRows(rows: AuditRow[], f: TaskFilters, dateOf: (t: Task) => string) {
+    const q = f.q?.trim().toLowerCase().replace(/^#/, '');
+    const from = f.from ? Date.parse(f.from) : null;
+    const to = f.to ? Date.parse(f.to) : null;
+    const statuses = f.status ? (LANES.find((l) => l.id === f.status)?.statuses as readonly string[] | undefined) : undefined;
+    return rows
+      .filter(({ task: t, assigneeName, creatorName, auditorName }) => {
+        if (f.assigneeId && t.assigneeId !== f.assigneeId) return false;
+        if (f.priority && t.priority !== f.priority) return false;
+        if (statuses && !statuses.includes(t.status)) return false;
+        const at = Date.parse(dateOf(t));
+        if (from !== null && at < from) return false;
+        if (to !== null && at >= to) return false;
+        if (q) {
+          const hay = `${taskRef(t.seq)} ${t.seq} ${t.title} ${t.description} ${assigneeName} ${creatorName} ${auditorName ?? ''}`.toLowerCase();
+          if (!q.split(/\s+/).every((word) => hay.includes(word))) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => dateOf(b.task).localeCompare(dateOf(a.task)));
+  }
+
+  /** The all-time audit record (owner only): every audited task, newest audit first, filtered. */
+  async audits(ctx: Ctx, f: AuditFilters, page = 1, pageSize = 50): Promise<AuditsResponse> {
+    if (ctx.role !== 'owner') throw forbidden('Only the workspace owner can see the audit record');
+    const tasks = await this.store.listTasks({ orgId: ctx.orgId, statuses: ['approved'] });
+    const rows = this.filterRows(await this.describeTasks(ctx.orgId, tasks), f, (t) => t.approvedAt ?? t.updatedAt);
+    const start = (page - 1) * pageSize;
+    return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
+  }
+
+  /** Earlier days: every task given out before today that the viewer can see, newest day first. */
+  async history(ctx: Ctx, f: TaskFilters, page = 1, pageSize = 60): Promise<HistoryResponse> {
+    const org = await this.store.getOrg(ctx.orgId);
+    const timezone = org?.timezone || 'UTC';
+    const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
+    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => t.createdAt < dayStart && canSeeTask(ctx, t));
+    const rows = this.filterRows(await this.describeTasks(ctx.orgId, tasks), f, (t) => t.createdAt);
+    const start = (page - 1) * pageSize;
+    return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize, timezone };
   }
 
   async findByRef(orgId: string, ref: string | number): Promise<Task | null> {
@@ -214,7 +318,7 @@ export class WorkspaceService {
     return this.store.getTaskBySeq(orgId, seq);
   }
 
-  async detail(ctx: Pick<Ctx, 'orgId'>, id: string): Promise<TaskDetail> {
+  async detail(ctx: Pick<Ctx, 'orgId'> & Partial<Pick<Ctx, 'userId' | 'role'>>, id: string): Promise<TaskDetail> {
     const task = await this.getTaskForCtx(ctx, id);
     const [proofs, comments, events] = await Promise.all([this.store.listProofs(id), this.store.listComments(id), this.store.listEvents({ taskId: id, limit: 100 })]);
     return { task, proofs, comments, events };
@@ -438,10 +542,12 @@ export class WorkspaceService {
 
   async comment(ctx: Ctx, id: string, body: string) {
     const task = await this.getTaskForCtx(ctx, id);
+    // Everyone already in the conversation hears about the new message (on the task itself).
+    const participants = [...new Set((await this.store.listComments(task.id)).map((c) => c.authorId))];
     const comment = await this.store.insertComment({ taskId: task.id, orgId: ctx.orgId, authorId: ctx.userId, body: body.trim() });
     const preview = body.trim().slice(0, 140);
     await this.log(ctx.orgId, ctx.userId, 'task.commented', task, { preview });
-    await this.emit({ type: 'commented', task, actorId: ctx.userId, preview });
+    await this.emit({ type: 'commented', task, actorId: ctx.userId, preview, participants });
     return comment;
   }
 
