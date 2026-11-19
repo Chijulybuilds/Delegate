@@ -413,17 +413,26 @@ export class MemoryStore implements Store {
   async insertNotifications(list: Array<Omit<AppNotification, 'id' | 'createdAt' | 'readAt'>>) {
     for (const n of list) this.notifications.push({ ...n, id: uuid(), createdAt: now(), readAt: null });
   }
-  async listNotifications(userId: string, limit: number) {
+  async listNotifications(userId: string, limit: number, scope: 'all' | 'general' = 'all') {
     return this.notifications
-      .filter((n) => n.userId === userId)
+      .filter((n) => n.userId === userId && (scope === 'all' || !n.taskId))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit)
       .map(clone);
   }
-  async markNotificationsRead(userId: string, ids: string[] | 'all') {
+  async listUnreadNotifications(userId: string) {
+    return this.notifications
+      .filter((n) => n.userId === userId && !n.readAt)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 500)
+      .map(clone);
+  }
+  async markNotificationsRead(userId: string, ids: string[] | 'all' | { taskId: string }) {
     const ts = now();
     for (const n of this.notifications) {
-      if (n.userId === userId && !n.readAt && (ids === 'all' || ids.includes(n.id))) n.readAt = ts;
+      if (n.userId !== userId || n.readAt) continue;
+      const hit = ids === 'all' ? !n.taskId : Array.isArray(ids) ? ids.includes(n.id) : n.taskId === ids.taskId;
+      if (hit) n.readAt = ts;
     }
   }
 

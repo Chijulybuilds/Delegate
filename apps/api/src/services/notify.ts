@@ -1,4 +1,5 @@
 import {
+  canSeeTask,
   isManagerRole,
   taskRef,
   type AiVerdict,
@@ -22,7 +23,7 @@ export type DomainEvent =
   | { type: 'submitted'; org: Organization; task: Task; actorId: string | null; aiVerdict: AiVerdict | null; source?: string }
   | { type: 'approved'; org: Organization; task: Task; actorId: string }
   | { type: 'changes_requested'; org: Organization; task: Task; actorId: string; comment: string }
-  | { type: 'commented'; org: Organization; task: Task; actorId: string; preview: string }
+  | { type: 'commented'; org: Organization; task: Task; actorId: string; preview: string; participants?: string[] }
   | { type: 'escalated'; org: Organization; task: Task; level: 1 | 2; reason: 'blocked'; hours: number }
   | { type: 'overdue'; org: Organization; task: Task; hours: number };
 
@@ -86,9 +87,14 @@ export class Notifier {
     const byId = new Map(members.map((m) => [m.userId, m]));
     const name = (id: string | null | undefined) => (id ? (byId.get(id)?.fullName ?? 'Someone') : 'Automation');
     const first = (id: string | null | undefined) => name(id).split(' ')[0]!;
-    const managers = members.filter((m) => isManagerRole(m.role));
-    const owners = members.filter((m) => m.role === 'owner');
     const { task } = evt;
+    // Only people allowed to see the task hear about it (the owner, and whoever it involves).
+    const managers = members.filter((m) => isManagerRole(m.role) && canSeeTask(m, task));
+    const owners = members.filter((m) => m.role === 'owner');
+    const sees = (id: string) => {
+      const m = byId.get(id);
+      return !!m && canSeeTask(m, task);
+    };
     const ref = taskRef(task.seq);
     const url = this.taskUrl(task);
     // Due times in the workspace's own time zone, e.g. "Thu 12 Nov, 18:00".
@@ -159,7 +165,9 @@ export class Notifier {
       }
       case 'commented': {
         out.inApp.push(
-          ...notActor([task.assigneeId, task.createdById], evt.actorId).map((userId) => ({ userId, type: 'commented' as const, title: `${first(evt.actorId)} replied on ${ref}`, body: evt.preview })),
+          ...notActor([task.assigneeId, task.createdById, ...(task.waitingOnId ? [task.waitingOnId] : []), ...(evt.participants ?? [])], evt.actorId)
+            .filter(sees)
+            .map((userId) => ({ userId, type: 'commented' as const, title: `${first(evt.actorId)}: “${evt.preview.slice(0, 60)}${evt.preview.length > 60 ? '…' : ''}”`, body: `${ref} ${task.title}` })),
         );
         break;
       }

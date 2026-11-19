@@ -1,5 +1,6 @@
 import { DEFAULT_ORG_SETTINGS, type EventType, type MemberRole, type Task, type TaskPriority, type TaskStatus } from '@delegate/shared';
 import { localParts } from '../services/automation.js';
+import { startOfDayInTz } from '../services/metrics.js';
 import type { MemoryStore } from './memory.js';
 
 export const DEMO_ORG_INVITE = 'LUMEN-2026';
@@ -78,12 +79,16 @@ const BLUEPRINTS: Blueprint[] = [
 export async function seedDemo(store: MemoryStore): Promise<void> {
   store.reset();
   const rand = rng(20261112);
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  // Days start at midnight in the demo workspace's time zone, like the Today board.
+  const today = startOfDayInTz(new Date(), 'Africa/Lagos');
   const dayStart = (daysAgo: number) => new Date(today.getTime() - daysAgo * 86_400_000);
   const addH = (d: Date, h: number) => new Date(d.getTime() + h * 3_600_000);
   const iso = (d: Date) => d.toISOString();
-  const clampPast = (d: Date) => (d.getTime() > Date.now() - 60_000 ? new Date(Date.now() - 60_000) : d);
+  // Never in the future, and never before today's midnight for today's tasks (the board resets daily).
+  const clampPast = (d: Date) => {
+    const latest = Math.max(Date.now() - 60_000, today.getTime() + 1_000);
+    return d.getTime() > latest ? new Date(latest) : d;
+  };
 
   const orgCreated = dayStart(30);
   const org = await store.createOrg({

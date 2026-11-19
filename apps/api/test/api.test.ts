@@ -168,9 +168,15 @@ describe('permissions', () => {
     const maya = await login('demo-maya');
     const task = await createTask(ada, { title: 'Count inventory', assigneeId: 'demo-tunde' });
     await request(app).post(`/api/tasks/${task.id}/transitions`).set(auth(ada)).send({ action: 'start' }).expect(200);
+    // Maya can't even see Tunde's task; Ada (the owner) can see it but it isn't hers to submit.
     await request(app)
       .post(`/api/tasks/${task.id}/transitions`)
       .set(auth(maya))
+      .send({ action: 'submit', proofs: [{ kind: 'note', note: 'done done' }] })
+      .expect(404);
+    await request(app)
+      .post(`/api/tasks/${task.id}/transitions`)
+      .set(auth(ada))
       .send({ action: 'submit', proofs: [{ kind: 'note', note: 'done done' }] })
       .expect(403);
   });

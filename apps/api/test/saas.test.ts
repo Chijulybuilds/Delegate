@@ -190,28 +190,55 @@ describe('billing & plans', () => {
 /* ----------------------------------------------------------------------------- notifications */
 
 describe('in-app notifications', () => {
-  it('tells the assignee, pings the person a blocker waits on, and asks managers to audit', async () => {
+  it('puts task news on the task (a badge), not in the bell, and clears it when the task is opened', async () => {
     const { app } = build();
     const ada = await token(app, 'demo-ada');
     const tunde = await token(app, 'demo-tunde');
     const kemi = await token(app, 'demo-kemi');
     const task = await createTask(app, ada, { title: 'Rotate API keys', assigneeId: 'demo-tunde' });
     let inbox = (await request(app).get('/api/notifications').set(auth(tunde)).expect(200)).body;
-    expect(inbox.notifications[0]).toMatchObject({ type: 'assigned', taskId: task.id });
-    expect(inbox.unread).toBeGreaterThan(0);
+    expect(inbox.tasks[task.id]).toMatchObject({ count: 1, latest: { type: 'assigned' } });
+    expect(inbox.notifications.some((n: { taskId: string | null }) => n.taskId)).toBe(false); // the bell has no task news
+    expect(inbox.unread).toBe(0);
+    expect(inbox.latest).toMatchObject({ id: expect.any(String) }); // drives the sound
 
     await request(app).post(`/api/tasks/${task.id}/transitions`).set(auth(tunde)).send({ action: 'block', reason: 'Need vault access', waitingOnId: 'demo-kemi' }).expect(200);
     const kemiInbox = (await request(app).get('/api/notifications').set(auth(kemi)).expect(200)).body;
-    expect(kemiInbox.notifications[0]).toMatchObject({ type: 'blocked_on_you' });
+    expect(kemiInbox.tasks[task.id].latest.type).toBe('blocked_on_you');
+    // Kemi is waited on, so she can open that task.
+    await request(app).get(`/api/tasks/${task.id}`).set(auth(kemi)).expect(200);
 
     await request(app).post(`/api/tasks/${task.id}/transitions`).set(auth(tunde)).send({ action: 'unblock' }).expect(200);
     await request(app).post(`/api/tasks/${task.id}/transitions`).set(auth(tunde)).send({ action: 'submit', proofs: [{ kind: 'note', note: 'Rotated all keys' }] }).expect(200);
     const adaInbox = (await request(app).get('/api/notifications').set(auth(ada)).expect(200)).body;
-    expect(adaInbox.notifications.some((n: { type: string }) => n.type === 'awaiting_audit')).toBe(true);
+    expect(adaInbox.tasks[task.id].latest.type).toBe('awaiting_audit');
 
+    // Messages on the task reach the other people on it, as a badge on that task.
+    await request(app).post(`/api/tasks/${task.id}/comments`).set(auth(ada)).send({ body: 'Did you rotate the staging keys too?' }).expect(201);
+    inbox = (await request(app).get('/api/notifications').set(auth(tunde)).expect(200)).body;
+    expect(inbox.tasks[task.id].count).toBe(2);
+    expect(inbox.tasks[task.id].latest).toMatchObject({ type: 'commented', title: expect.stringContaining('staging keys') });
+
+    // "Mark all read" in the bell leaves task badges alone; opening the task clears them.
     await request(app).post('/api/notifications/read').set(auth(tunde)).send({ ids: 'all' }).expect(200);
     inbox = (await request(app).get('/api/notifications').set(auth(tunde)).expect(200)).body;
-    expect(inbox.unread).toBe(0);
+    expect(inbox.tasks[task.id].count).toBe(2);
+    await request(app).post('/api/notifications/read').set(auth(tunde)).send({ taskId: task.id }).expect(200);
+    inbox = (await request(app).get('/api/notifications').set(auth(tunde)).expect(200)).body;
+    expect(inbox.tasks[task.id]).toBeUndefined();
+    expect(inbox.latest).toBeNull();
+  });
+
+  it('never tells someone about a task they are not allowed to see', async () => {
+    const { app } = build();
+    const ada = await token(app, 'demo-ada');
+    const tunde = await token(app, 'demo-tunde');
+    const task = await createTask(app, ada, { title: 'Quarterly payroll', assigneeId: 'demo-tunde' });
+    await request(app).post(`/api/tasks/${task.id}/transitions`).set(auth(tunde)).send({ action: 'start' }).expect(200);
+    await request(app).post(`/api/tasks/${task.id}/transitions`).set(auth(tunde)).send({ action: 'submit', proofs: [{ kind: 'note', note: 'Paid' }] }).expect(200);
+    // Kemi is a manager, but this isn't her task: no "ready for audit" for her.
+    expect(store.notifications.some((n) => n.userId === 'demo-kemi' && n.taskId === task.id)).toBe(false);
+    expect(store.notifications.some((n) => n.userId === 'demo-ada' && n.taskId === task.id && n.type === 'awaiting_audit')).toBe(true);
   });
 });
 
@@ -448,7 +475,7 @@ describe('GitHub auto-proof', () => {
 /* ----------------------------------------------------------------------------- automations */
 
 describe('automations', () => {
-  it('escalates a blocker to managers after 4h and to the owner after 24h — once each', async () => {
+  it('escalates a blocker to the responsible manager after 4h and to the owner after 24h — once each', async () => {
     const { app } = build();
     const ada = await token(app, 'demo-ada');
     const leo = await token(app, 'demo-leo');
@@ -461,10 +488,12 @@ describe('automations', () => {
     expect(store.tasks.get(task.id)!.escalationLevel).toBe(0);
     await tick(5);
     expect(store.tasks.get(task.id)!.escalationLevel).toBe(1);
-    const kemiEsc = store.notifications.filter((n) => n.userId === 'demo-kemi' && n.type === 'escalated' && n.taskId === task.id);
-    expect(kemiEsc).toHaveLength(1);
+    // Level 1 goes to the managers who can see the task: Ada handed it out (Kemi can't see it).
+    const adaEsc = () => store.notifications.filter((n) => n.userId === 'demo-ada' && n.type === 'escalated' && n.taskId === task.id);
+    expect(adaEsc()).toHaveLength(1);
+    expect(store.notifications.some((n) => n.userId === 'demo-kemi' && n.taskId === task.id)).toBe(false);
     await tick(6);
-    expect(store.notifications.filter((n) => n.userId === 'demo-kemi' && n.type === 'escalated' && n.taskId === task.id)).toHaveLength(1);
+    expect(adaEsc()).toHaveLength(1);
     await tick(25);
     expect(store.tasks.get(task.id)!.escalationLevel).toBe(2);
     expect(store.events.filter((e) => e.taskId === task.id && e.type === 'task.escalated')).toHaveLength(2);

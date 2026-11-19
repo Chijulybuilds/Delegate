@@ -1,13 +1,14 @@
 import { availableActions, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
-import { BellRing, MessageCircle, Plus, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { AlarmClock, ArrowRight, BellRing, CirclePlay, History, OctagonPause, Pause, Plus, RefreshCw, ShieldCheck, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
+import { EmptyLaneArt } from '../components/EmptyLaneArt';
 import { useToast } from '../components/Toast';
 import { Avatar, Button, cx, EASE, EmptyState, PriorityTag, Segmented, Select, Spinner, StatusDot } from '../components/ui';
 import { dueLabel, timeAgo } from '../lib/format';
 import { PageHeader } from './AppShell';
-import { memberName, useBoard, useMarkRead, useNotifications, useTransition, useWorkspace, type WorkspaceData } from './data';
+import { memberName, useBoard, useNotifications, useTransition, useWorkspace, type WorkspaceData } from './data';
 import { NewTaskModal } from './NewTaskModal';
 import { departmentOptions, memberOptions } from './options';
 import { TaskDrawer } from './TaskDrawer';
@@ -17,6 +18,19 @@ const laneTone: Record<string, string> = {
   active: 'bg-s-active',
   done: 'bg-s-done',
   approved: 'bg-s-approved',
+};
+/** The coloured wash at the top of each lane: a solid band fading into the lane. */
+const laneBand: Record<string, string> = {
+  open: 'bg-s-open-tint',
+  active: 'bg-s-active-tint',
+  done: 'bg-s-done-tint',
+  approved: 'bg-s-approved-tint',
+};
+const laneWash: Record<string, string> = {
+  open: 'from-s-open-tint',
+  active: 'from-s-active-tint',
+  done: 'from-s-done-tint',
+  approved: 'from-s-approved-tint',
 };
 
 type Focus = 'toStart' | 'inMotion' | 'overdue' | 'blocked' | 'waitingOnMe' | 'toAudit';
@@ -29,6 +43,15 @@ const FOCUS: Record<Focus, { label: string; match: (me: string, team: boolean) =
   blocked: { label: 'Blocked', match: () => (t) => t.status === 'blocked' },
   waitingOnMe: { label: 'Waiting on me', match: (me) => (t) => t.status === 'blocked' && t.waitingOnId === me },
   toAudit: { label: 'To audit', match: () => (t) => t.status === 'done' },
+};
+/** The little icon chip on each glance tile (it shows the number instead when there is one). */
+const GLANCE_ICON: Record<Focus, { icon: LucideIcon; tone?: string }> = {
+  toStart: { icon: CirclePlay },
+  inMotion: { icon: RefreshCw },
+  overdue: { icon: AlarmClock, tone: 'bg-s-open-soft text-s-open-ink' },
+  blocked: { icon: OctagonPause, tone: 'bg-s-active-soft text-s-active-ink' },
+  waitingOnMe: { icon: Pause },
+  toAudit: { icon: ShieldCheck, tone: 'bg-s-approved-soft text-s-approved-ink' },
 };
 /** Four numbers that answer "what needs me today?" — different for managers and staff. */
 const GLANCE: Record<'manager' | 'member', Focus[]> = {
@@ -48,8 +71,7 @@ const QUICK: Partial<Record<TransitionAction, string>> = {
 export default function BoardPage() {
   const ws = useWorkspace();
   const board = useBoard();
-  const notifications = useNotifications();
-  const markRead = useMarkRead();
+  const news = useNotifications().data?.tasks ?? {};
   const transition = useTransition();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
@@ -71,6 +93,7 @@ export default function BoardPage() {
 
   const meId = ws.data?.me.userId ?? '';
   const isManager = isManagerRole(ws.data?.me.role);
+  const isOwner = ws.data?.me.role === 'owner';
   const tasks = useMemo(() => {
     let list = board.data?.tasks ?? [];
     if (focus) list = list.filter(FOCUS[focus].match(meId, isManager));
@@ -126,24 +149,71 @@ export default function BoardPage() {
 
       {/* Today at a glance: four numbers that double as one-click filters */}
       <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:px-8 md:grid-cols-4" data-testid="glance">
-        {glance.map((g) => (
-          <button
-            key={g.id}
-            onClick={() => setFocus((f) => (f === g.id ? null : g.id))}
-            aria-pressed={focus === g.id}
-            className={cx(
-              'flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-colors',
-              focus === g.id ? 'border-ink bg-ink text-milk' : 'border-line bg-paper hover:border-line-2',
-            )}
-            data-testid={`glance-${g.id}`}
-          >
-            <span className={cx('text-[13px]', focus === g.id ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
-            <span className={cx('text-2xl font-medium tracking-display', g.count > 0 && focus !== g.id && (g.id === 'overdue' || g.id === 'waitingOnMe') && 'text-s-open-ink')}>{g.count}</span>
-          </button>
-        ))}
+        {glance.map((g) => {
+          const on = focus === g.id;
+          const { icon: Icon, tone } = GLANCE_ICON[g.id];
+          const alert = g.count > 0 && (g.id === 'overdue' || g.id === 'waitingOnMe');
+          return (
+            <motion.button
+              key={g.id}
+              onClick={() => setFocus((f) => (f === g.id ? null : g.id))}
+              aria-pressed={on}
+              whileTap={{ scale: 0.98 }}
+              className={cx(
+                'flex items-center justify-between rounded-2xl border px-4 py-3.5 text-left shadow-[var(--shadow-card)] transition-colors',
+                on ? 'border-ink bg-ink text-milk' : 'border-line bg-paper hover:border-line-2',
+              )}
+              data-testid={`glance-${g.id}`}
+            >
+              <span className={cx('text-[13.5px]', on ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
+              <span
+                className={cx(
+                  'grid h-9 min-w-9 place-items-center rounded-xl px-2 transition-colors',
+                  on ? 'bg-milk/15 text-milk' : alert ? 'bg-s-open-soft text-s-open-ink' : g.count > 0 ? 'bg-milk-2 text-ink' : (tone ?? 'bg-milk-2 text-ink-2'),
+                )}
+              >
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {g.count > 0 ? (
+                    <motion.span key={`n-${g.count}`} className="text-xl font-medium tracking-display" initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -8, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}>
+                      {g.count}
+                    </motion.span>
+                  ) : (
+                    <motion.span key="icon" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }} aria-label="0">
+                      <Icon className="size-[17px]" strokeWidth={1.9} />
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </span>
+            </motion.button>
+          );
+        })}
       </div>
 
+      {/* Every day starts fresh: earlier work lives on the History page. */}
+      {board.data && (board.data.earlier.unfinished > 0 || board.data.earlier.awaitingAudit > 0) && (
+        <Link
+          to={`/app/history${board.data.earlier.awaitingAudit > 0 && board.data.earlier.unfinished === 0 ? '?status=done' : ''}`}
+          className="group mx-4 mb-4 flex items-center gap-3 rounded-2xl border border-dashed border-line-2 px-4 py-2.5 text-sm text-ink-2 transition-colors hover:border-ink hover:text-ink sm:mx-8"
+          data-testid="earlier-days"
+        >
+          <History className="size-4 shrink-0 text-mute" />
+          <span>
+            From earlier days:{' '}
+            {[
+              board.data.earlier.unfinished > 0 && `${board.data.earlier.unfinished} unfinished`,
+              board.data.earlier.awaitingAudit > 0 && `${board.data.earlier.awaitingAudit} awaiting audit`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+          <span className="ml-auto inline-flex items-center gap-1 font-medium">
+            History <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+          </span>
+        </Link>
+      )}
+
       {/* Filters: swimlanes by department/person without losing the global rhythm */}
+      {isManager && (
       <div className={cx('flex flex-wrap items-center gap-2 px-4 pb-5 sm:px-8', focus && 'pointer-events-none opacity-40')}>
         <Segmented
           value={scope}
@@ -163,6 +233,7 @@ export default function BoardPage() {
           data-testid="filter-person"
         />
       </div>
+      )}
 
       {/* Blocker Ping: the bottleneck sees who is waiting on them */}
       <AnimatePresence>
@@ -202,34 +273,41 @@ export default function BoardPage() {
               .filter((t) => (lane.statuses as readonly string[]).includes(t.status))
               .sort((a, b) => (b.status === 'blocked' ? 1 : 0) - (a.status === 'blocked' ? 1 : 0) || b.updatedAt.localeCompare(a.updatedAt));
             return (
-              <section key={lane.id} className="flex min-h-[200px] flex-col rounded-3xl bg-milk-2/70 p-2.5" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
-                <header className="flex items-center gap-2 px-2 pb-3 pt-1.5">
+              <section key={lane.id} className="relative flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5" aria-label={lane.label} data-testid={`lane-${lane.id}`}>
+                {/* The lane's colour washes down from the top, like a coloured header */}
+                <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent', laneWash[lane.id])} aria-hidden />
+                <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-12 opacity-80', laneBand[lane.id])} aria-hidden />
+                <header className="relative flex items-center gap-2 px-2 pb-3 pt-1.5">
                   <span className={cx('size-2.5 rounded-full', laneTone[lane.id])} />
-                  <h2 className="text-[14px] font-medium tracking-[-0.01em]">{lane.label}</h2>
-                  <span className="ml-auto rounded-full bg-paper px-2 py-0.5 text-xs text-mute">{laneTasks.length}</span>
+                  <h2 className="text-[14.5px] font-medium tracking-[-0.01em]">{lane.label}</h2>
+                  <span className="ml-auto grid min-w-6 place-items-center rounded-full bg-paper/90 px-2 py-0.5 text-xs text-ink-2 shadow-[var(--shadow-card)]">{laneTasks.length}</span>
                 </header>
-                <div className="flex flex-1 flex-col gap-2">
+                <div className="relative flex flex-1 flex-col gap-2">
                   <AnimatePresence mode="popLayout" initial={false}>
                     {laneTasks.map((t) => (
                       <TaskCard
                         key={t.id}
                         task={t}
                         ws={ws.data}
-                        commentAlert={notifications.data?.notifications.some((n) => n.type === 'commented' && n.taskId === t.id && !n.readAt) ?? false}
                         aiVerdict={board.data?.aiVerdicts[t.id] ?? null}
                         verifiedBy={board.data?.verified[t.id] ?? null}
-                        onOpen={() => {
-                          const commentIds = (notifications.data?.notifications ?? []).filter((n) => n.type === 'commented' && n.taskId === t.id && !n.readAt).map((n) => n.id);
-                          if (commentIds.length) markRead.mutate(commentIds);
-                          openTask(t.id);
-                        }}
+                        news={news[t.id]?.count ?? 0}
+                        onOpen={() => openTask(t.id)}
                         onQuick={(a) => quick(t, a)}
                         busy={transition.isPending && transition.variables?.id === t.id}
                       />
                     ))}
                   </AnimatePresence>
                   {laneTasks.length === 0 && (
-                    <p className="px-2 py-6 text-center text-xs text-faint">{lane.id === 'open' ? 'Nothing waiting. Assign something.' : 'Nothing here yet'}</p>
+                    <motion.div className="flex flex-1 flex-col items-center justify-center gap-2 px-2 py-8 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+                      <EmptyLaneArt className="w-24 text-faint" />
+                      <p className="text-[13px] text-mute">{lane.id === 'open' && isManager && !focus ? 'No tasks yet today' : 'No tasks here yet'}</p>
+                    </motion.div>
+                  )}
+                  {lane.id === 'approved' && isOwner && (
+                    <Link to="/app/audits" className="mt-auto inline-flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs text-mute transition-colors hover:bg-paper hover:text-ink" data-testid="all-audits-link">
+                      Every audit, all time <ArrowRight className="size-3.5" />
+                    </Link>
                   )}
                 </div>
               </section>
@@ -242,7 +320,7 @@ export default function BoardPage() {
         <div className="px-4 pb-10 sm:px-8">
           <EmptyState
             title="Your board is empty"
-            body="Assign the first task of the day. It lands red on the assignee’s board and on everyone’s heartbeat."
+            body="Every day starts with a fresh board; yesterday’s work is on the History page. Assign the first task of the day: it lands red on the assignee’s board."
             action={<Button onClick={() => setCreating(true)}>Create the first task</Button>}
           />
         </div>
@@ -257,18 +335,19 @@ export default function BoardPage() {
 function TaskCard({
   task,
   ws,
-  commentAlert,
   aiVerdict,
   verifiedBy,
+  news = 0,
   onOpen,
   onQuick,
   busy,
 }: {
   task: Task;
   ws: WorkspaceData;
-  commentAlert: boolean;
   aiVerdict: TaskProof['aiVerdict'];
   verifiedBy: ProofSource | null;
+  /** Unread messages and updates about this task for the viewer: the red badge. */
+  news?: number;
   onOpen: () => void;
   onQuick: (a: TransitionAction) => void;
   busy: boolean;
@@ -299,22 +378,22 @@ function TaskCard({
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
       tabIndex={0}
       role="button"
-      aria-label={`${task.title}, ${STATUS_META[task.status].label}`}
+      aria-label={`${task.title}, ${STATUS_META[task.status].label}${news ? `, ${news} new` : ''}`}
       data-testid="task-card"
       data-task-title={task.title}
       data-status={task.status}
       className={cx(
-        'group cursor-pointer rounded-2xl border bg-paper p-3.5 shadow-[var(--shadow-card)] outline-none transition-[border,box-shadow] hover:border-line-2 hover:shadow-[var(--shadow-float)] focus-visible:border-ink',
-        task.status === 'blocked' ? 'border-s-active/50' : 'border-line',
+        'group relative cursor-pointer rounded-2xl border bg-paper p-3.5 shadow-[var(--shadow-card)] outline-none transition-[border,box-shadow] hover:border-line-2 hover:shadow-[var(--shadow-float)] focus-visible:border-ink',
+        task.status === 'blocked' ? 'border-s-active/50' : news ? 'border-s-open/40' : 'border-line',
       )}
     >
+      <NewsBadge count={news} />
       <div className="flex items-center gap-2">
         <StatusDot status={task.status} pulse={task.status === 'blocked'} />
         <span className="font-mono text-[11px] text-faint" data-testid="task-ref">
           {taskRef(task.seq)}
         </span>
         <PriorityTag priority={task.priority} />
-        {commentAlert && <MessageCircle className="size-4 text-s-approved" aria-label="New task discussion" title="New discussion in this task" />}
         {task.source !== 'app' && (
           <span className="rounded-full bg-milk px-1.5 py-0.5 text-[10px] font-medium text-mute" title={`Created from ${SOURCE_LABEL[task.source]}`}>
             {SOURCE_LABEL[task.source]}
@@ -355,7 +434,14 @@ function TaskCard({
       <div className="mt-3 flex items-center gap-2">
         <Avatar name={assignee?.fullName ?? '?'} src={assignee?.avatarUrl} size={22} />
         <span className="truncate text-xs text-ink-2">{assignee?.fullName.split(' ')[0] ?? 'Unassigned'}</span>
-        <span className={cx('ml-auto shrink-0 text-[11px]', due.overdue && task.status !== 'done' && task.status !== 'approved' ? 'font-medium text-s-open-ink' : 'text-faint')}>{footer}</span>
+        <span
+          className={cx(
+            'ml-auto shrink-0 text-[11px]',
+            due.overdue && task.status !== 'done' && task.status !== 'approved' ? 'rounded-full bg-s-open-soft px-2 py-0.5 font-medium text-s-open-ink' : 'text-faint',
+          )}
+        >
+          {footer}
+        </span>
       </div>
 
       {primary && QUICK[primary] && (
@@ -376,5 +462,28 @@ function TaskCard({
         </div>
       )}
     </motion.article>
+  );
+}
+
+/** The red count on a task card: new messages and updates about this task, cleared when it's opened. */
+export function NewsBadge({ count }: { count: number }) {
+  return (
+    <AnimatePresence>
+      {count > 0 && (
+        <motion.span
+          key="news"
+          className="absolute -right-1.5 -top-1.5 z-10 grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_2px_8px_rgb(229_72_77/0.45)] ring-2 ring-paper"
+          initial={{ scale: 0, rotate: -20 }}
+          animate={{ scale: 1, rotate: 0 }}
+          exit={{ scale: 0, opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 520, damping: 18 }}
+          aria-label={`${count} new`}
+          data-testid="task-news"
+        >
+          <span className="absolute inset-0 animate-ping rounded-full bg-s-open opacity-30" aria-hidden />
+          <span className="relative">{count > 9 ? '9+' : count}</span>
+        </motion.span>
+      )}
+    </AnimatePresence>
   );
 }

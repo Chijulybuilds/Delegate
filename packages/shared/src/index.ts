@@ -83,6 +83,15 @@ export function isManagerRole(role: MemberRole | null | undefined): boolean {
   return role === 'owner' || role === 'manager';
 }
 
+/**
+ * Who can see a task. The owner sees everything. Everyone else sees only work that involves them:
+ * tasks assigned to them, tasks they handed out, and a task that's blocked waiting on them.
+ * Enforced by the API and, for direct database reads, by Supabase row-level security.
+ */
+export function canSeeTask(viewer: { userId: string; role: MemberRole }, task: { assigneeId: string; createdById: string; waitingOnId: string | null }): boolean {
+  return viewer.role === 'owner' || task.assigneeId === viewer.userId || task.createdById === viewer.userId || task.waitingOnId === viewer.userId;
+}
+
 /** Which actions can this viewer take on this task right now? Mirrors the API's enforcement. */
 export function availableActions(
   task: Pick<Task, 'status' | 'assigneeId'>,
@@ -551,6 +560,18 @@ export interface IntegrationsOverview {
 
 export type NotificationType = 'assigned' | 'blocked_on_you' | 'awaiting_audit' | 'approved' | 'changes_requested' | 'commented' | 'escalated' | 'overdue' | 'auto_proof' | 'billing';
 
+/** GET /api/notifications */
+export interface NotificationsResponse {
+  /** The bell: notifications that aren't about one task (billing…). */
+  notifications: AppNotification[];
+  /** Unread in the bell. */
+  unread: number;
+  /** Unread news per task, shown as a red badge on that task's card. */
+  tasks: Record<string, { count: number; latest: Pick<AppNotification, 'type' | 'title' | 'createdAt'> }>;
+  /** Newest unread notification of any kind (plays the sound when it changes). */
+  latest: Pick<AppNotification, 'id' | 'createdAt'> | null;
+}
+
 export interface AppNotification {
   id: string;
   orgId: string;
@@ -640,4 +661,55 @@ export interface LeavePlan {
   deletesWorkspace: boolean;
   /** A paid subscription blocks deleting the workspace until it's cancelled. */
   paidPlanActive: boolean;
+}
+
+/* ------------------------------------------------------------------ Board, History, Audits */
+
+/** GET /api/tasks — today's board. */
+export interface BoardResponse {
+  tasks: Task[];
+  aiVerdicts: Record<string, AiVerdict | null>;
+  verified: Record<string, ProofSource>;
+  /** Today in the workspace's time zone: the board shows tasks given out since `start`. */
+  day: { start: string; timezone: string };
+  /** Earlier days (on the History page) that still need something. */
+  earlier: { unfinished: number; awaitingAudit: number };
+}
+
+/** A task with the names around it (History and Audits). */
+export interface AuditRow {
+  task: Task;
+  assigneeName: string;
+  creatorName: string;
+  auditorName: string | null;
+  departmentName: string | null;
+  /** Assigned → proof submitted, in hours. */
+  hoursToGreen: number | null;
+}
+
+export interface TaskFilters {
+  /** Free text: title, brief, DLG number, or a person's name. */
+  q?: string;
+  assigneeId?: string;
+  priority?: TaskPriority;
+  /** A board lane: open, active (in motion), done (executed), approved (audited). */
+  status?: (typeof LANES)[number]['id'];
+  /** On or after (ISO). */
+  from?: string;
+  /** Before (ISO). */
+  to?: string;
+}
+/** Audits filter by when the task was audited. */
+export type AuditFilters = Omit<TaskFilters, 'status'>;
+
+export interface AuditsResponse {
+  rows: AuditRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** GET /api/history — tasks from earlier days (filtered by the day they were given out). */
+export interface HistoryResponse extends AuditsResponse {
+  timezone: string;
 }

@@ -1,4 +1,4 @@
-import { STATUS_META, type LedgerEvent } from '@delegate/shared';
+import { isManagerRole, STATUS_META, type LedgerEvent } from '@delegate/shared';
 import { Users } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
@@ -42,7 +42,7 @@ export default function HeartbeatPage() {
     <div>
       <PageHeader
         title="Activity"
-        subtitle="Everything that happened — assignments, starts, blockers, proof and audits, live."
+        subtitle={ws.data?.me.role === 'owner' ? 'Everything that happened — assignments, starts, blockers, proof and audits, live.' : 'What happened on your tasks — assignments, starts, blockers, proof and audits, live.'}
         actions={
           <>
             <span className="inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 text-xs text-mute">
@@ -52,6 +52,7 @@ export default function HeartbeatPage() {
               </span>
               Live
             </span>
+            {isManagerRole(ws.data?.me.role) && (
             <Select
               size="sm"
               align="end"
@@ -60,6 +61,7 @@ export default function HeartbeatPage() {
               options={[{ value: 'all', label: 'Everyone', icon: <Users className="size-4 text-mute" /> }, ...memberOptions(ws.data?.members ?? [], { departments: ws.data?.departments })]}
               aria-label="Filter by person"
             />
+            )}
           </>
         }
       />

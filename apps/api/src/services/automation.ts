@@ -203,9 +203,10 @@ export class AutomationService {
     }
 
     if (ent.features.standupEmail && this.mailer.enabled) {
-      const to = members.filter((m) => isManagerRole(m.role)).map((m) => m.email).filter(Boolean);
+      // The whole team's brief: only owners see everyone's work.
+      const to = members.filter((m) => m.role === 'owner').map((m) => m.email).filter(Boolean);
       const ok = await this.mailer.send({ to, subject: `${org.name} · Standup for ${brief.date}`, text });
-      await this.store.logOutbound({ orgId: org.id, channel: 'email', target: `${to.length} manager(s)`, summary: `Standup ${brief.date}`, status: ok ? 'sent' : 'failed', error: ok ? null : 'Email provider rejected the message' });
+      await this.store.logOutbound({ orgId: org.id, channel: 'email', target: `${to.length} owner(s)`, summary: `Standup ${brief.date}`, status: ok ? 'sent' : 'failed', error: ok ? null : 'Email provider rejected the message' });
     }
     report.digests++;
   }

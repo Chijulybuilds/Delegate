@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { CHANNEL_EVENTS, INTEGRATION_PROVIDERS, isManagerRole } from '@delegate/shared';
+import { CHANNEL_EVENTS, INTEGRATION_PROVIDERS, isManagerRole, type NotificationsResponse } from '@delegate/shared';
 import { forbidden } from '../lib/errors.js';
 import type { AutomationService } from '../services/automation.js';
 import type { BillingService } from '../services/billing.js';
@@ -132,13 +132,28 @@ export function saasRoutes(deps: {
   /* ------------------------------------------------------------------ notifications */
 
   r.get('/notifications', async (req, res) => {
-    const list = await store.listNotifications(req.user!.id, 30);
-    res.json({ notifications: list, unread: list.filter((n) => !n.readAt).length });
+    const [general, unread] = await Promise.all([store.listNotifications(req.user!.id, 30, 'general'), store.listUnreadNotifications(req.user!.id)]);
+    // News about a task belongs on that task: a red badge on its card, cleared when it's opened.
+    const tasks: NotificationsResponse['tasks'] = {};
+    for (const n of unread) {
+      if (!n.taskId) continue;
+      const slot = (tasks[n.taskId] ??= { count: 0, latest: { type: n.type, title: n.title, createdAt: n.createdAt } });
+      slot.count++;
+    }
+    const body: NotificationsResponse = {
+      notifications: general,
+      unread: unread.filter((n) => !n.taskId).length,
+      tasks,
+      latest: unread[0] ? { id: unread[0].id, createdAt: unread[0].createdAt } : null,
+    };
+    res.json(body);
   });
 
   r.post('/notifications/read', async (req, res) => {
-    const body = z.object({ ids: z.union([z.array(z.string().max(64)).max(100), z.literal('all')]) }).parse(req.body);
-    await store.markNotificationsRead(req.user!.id, body.ids);
+    const body = z
+      .union([z.object({ ids: z.union([z.array(z.string().max(64)).max(100), z.literal('all')]) }), z.object({ taskId: z.string().min(1).max(64) })])
+      .parse(req.body);
+    await store.markNotificationsRead(req.user!.id, 'taskId' in body ? { taskId: body.taskId } : body.ids);
     res.json({ ok: true });
   });
 

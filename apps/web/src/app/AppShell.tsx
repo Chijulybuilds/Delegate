@@ -1,23 +1,42 @@
 import { isManagerRole, type AppNotification } from '@delegate/shared';
-import { Activity, Bell, BarChart3, ClipboardCheck, KanbanSquare, Repeat2, Settings, Users } from 'lucide-react';
+import { Activity, Bell, BarChart3, History, KanbanSquare, Repeat2, Settings, ShieldCheck, Users } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { Avatar, cx, EASE, FullPageSpinner, Logo, LogoMark } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { timeAgo } from '../lib/format';
+import { playNotificationSound, primeSound } from '../lib/sound';
 import { useBoard, useMarkRead, useNotifications, useRealtimeHeartbeat, useWorkspace } from './data';
 import { UserMenu } from './UserMenu';
 
 const NAV = [
   { to: '/app', label: 'Today', icon: KanbanSquare, end: true },
+  { to: '/app/history', label: 'History', icon: History },
+  { to: '/app/audits', label: 'Audits', icon: ShieldCheck, ownerOnly: true },
   { to: '/app/activity', label: 'Activity', icon: Activity },
   { to: '/app/insights', label: 'Insights', icon: BarChart3 },
   { to: '/app/playbooks', label: 'Playbooks', icon: Repeat2 },
   { to: '/app/team', label: 'Team', icon: Users },
-  { to: '/app/audits', label: 'All-time audit', icon: ClipboardCheck, ownerOnly: true },
   { to: '/app/settings', label: 'Settings', icon: Settings },
 ];
+
+/** Plays Delegate's chime whenever a new notification arrives (never for what was already there). */
+function useNotificationSound() {
+  const latest = useNotifications().data?.latest;
+  const seen = useRef<string | null>(null);
+  useEffect(() => primeSound(), []);
+  useEffect(() => {
+    if (latest === undefined) return;
+    const at = latest?.createdAt ?? null;
+    if (seen.current === null) {
+      seen.current = at ?? '';
+      return;
+    }
+    if (at && at > seen.current) void playNotificationSound();
+    if (at && at > seen.current) seen.current = at;
+  }, [latest]);
+}
 
 const roleLabel = { owner: 'Owner', manager: 'Manager', member: 'Staff' } as const;
 
@@ -25,8 +44,10 @@ export default function AppShell() {
   const { me, signOut } = useAuth();
   const ws = useWorkspace();
   const board = useBoard();
+  const notes = useNotifications().data;
   const location = useLocation();
   useRealtimeHeartbeat(ws.data?.org.id);
+  useNotificationSound();
 
   if (ws.error) {
     return (
@@ -44,7 +65,13 @@ export default function AppShell() {
   }
   if (!me || ws.isLoading || !ws.data) return <FullPageSpinner />;
   const role = ws.data.me.role;
-  const awaitingAudit = isManagerRole(role) ? (board.data?.tasks.filter((t) => t.status === 'done').length ?? 0) : 0;
+  const nav = NAV.filter((n) => !n.ownerOnly || role === 'owner');
+  // Red counts in the menu: tasks with news, on today's board and in earlier days.
+  const todayIds = new Set((board.data?.tasks ?? []).map((t) => t.id));
+  const newsIds = Object.keys(notes?.tasks ?? {});
+  const newsToday = newsIds.filter((id) => todayIds.has(id)).length;
+  const newsEarlier = board.data ? newsIds.length - newsToday : 0;
+  const badge: Record<string, number> = { Today: newsToday, History: newsEarlier };
 
   return (
     <div className="min-h-dvh bg-milk lg:grid lg:grid-cols-[240px_1fr]">
@@ -63,16 +90,20 @@ export default function AppShell() {
           </p>
         </div>
         <nav className="mt-5 space-y-0.5" aria-label="Workspace">
-          {NAV.filter((n) => !n.ownerOnly || role === 'owner').map((n) => (
+          {nav.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
               end={n.end}
-              className={({ isActive }) => cx('relative flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] transition-colors', isActive ? 'text-ink' : 'text-mute hover:bg-ink/[0.04] hover:text-ink')}
+              className={({ isActive }) =>
+                cx('relative flex h-11 items-center gap-3 rounded-xl px-3 text-[14px] transition-colors duration-300', isActive ? 'font-medium text-milk' : 'text-mute hover:bg-ink/[0.05] hover:text-ink')
+              }
+              data-testid={`nav-${n.label.toLowerCase()}`}
             >
               {({ isActive }) => (
                 <>
-                  {isActive && <motion.span layoutId="nav-active" className="absolute inset-0 rounded-xl border border-line bg-paper shadow-[var(--shadow-card)]" transition={{ duration: 0.35, ease: EASE }} />}
+                  {/* The current page: a black pill that glides between items */}
+                  {isActive && <motion.span layoutId="nav-active" className="absolute inset-0 rounded-xl bg-ink shadow-[0_6px_18px_-6px_rgb(0_0_0/0.45)]" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
                   <n.icon className="relative size-[17px]" strokeWidth={1.8} />
                   <span className="relative">{n.label}</span>
                   {n.label === 'Activity' && (
@@ -81,10 +112,16 @@ export default function AppShell() {
                       <span className="relative inline-flex size-2 rounded-full bg-s-done" />
                     </span>
                   )}
-                  {n.label === 'Today' && awaitingAudit > 0 && (
-                    <span className="relative ml-auto rounded-full bg-s-done-soft px-2 text-[11px] font-medium text-s-done-ink" title="Awaiting your audit">
-                      {awaitingAudit}
-                    </span>
+                  {(badge[n.label] ?? 0) > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="relative ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[11px] font-semibold text-white"
+                      title="Tasks with new messages or updates"
+                      data-testid={`nav-news-${n.label.toLowerCase()}`}
+                    >
+                      {badge[n.label]}
+                    </motion.span>
                   )}
                 </>
               )}
@@ -117,11 +154,23 @@ export default function AppShell() {
       </main>
 
       {/* Bottom tabs (mobile) */}
-      <nav className={cx('fixed inset-x-0 bottom-0 z-30 grid border-t border-line bg-milk/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden', role === 'owner' ? 'grid-cols-7' : 'grid-cols-6')} aria-label="Workspace">
-        {NAV.filter((n) => !n.ownerOnly || role === 'owner').map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => cx('flex h-14 flex-col items-center justify-center gap-0.5 text-[10px]', isActive ? 'text-ink' : 'text-faint')}>
-            <n.icon className="size-[18px]" strokeWidth={1.8} />
-            {n.label}
+      <nav className="scrollbar-none fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-line bg-milk/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden" aria-label="Workspace">
+        {nav.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.end}
+            className={({ isActive }) => cx('relative flex h-14 min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px]', isActive ? 'font-medium text-ink' : 'text-faint')}
+          >
+            {({ isActive }) => (
+              <>
+                <span className={cx('grid h-7 w-11 place-items-center rounded-full transition-colors', isActive && 'bg-ink text-milk')}>
+                  <n.icon className="size-[17px]" strokeWidth={1.8} />
+                </span>
+                {n.label}
+                {(badge[n.label] ?? 0) > 0 && <span className="absolute right-[calc(50%-22px)] top-1.5 size-2 rounded-full bg-s-open ring-2 ring-milk" />}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -169,35 +218,6 @@ function NotificationBell() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const visibleNotifications = (data?.notifications ?? []).filter((n) => n.type !== 'commented');
-  const visibleUnread = visibleNotifications.filter((n) => !n.readAt).length;
-  const seenUnread = useRef<string | null>(null);
-
-  useEffect(() => {
-    const newest = visibleNotifications.find((n) => !n.readAt)?.id ?? null;
-    if (seenUnread.current && newest && newest !== seenUnread.current) {
-      try {
-        const AudioContextClass = window.AudioContext;
-        if (AudioContextClass) {
-          const context = new AudioContextClass();
-          const oscillator = context.createOscillator();
-          const gain = context.createGain();
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(880, context.currentTime);
-          oscillator.frequency.setValueAtTime(1174.66, context.currentTime + 0.09);
-          gain.gain.setValueAtTime(0.0001, context.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.28);
-          oscillator.connect(gain);
-          gain.connect(context.destination);
-          oscillator.start();
-          oscillator.stop(context.currentTime + 0.3);
-          oscillator.onended = () => void context.close();
-        }
-      } catch { /* Audio may be blocked until the user interacts with the page. */ }
-    }
-    if (newest) seenUnread.current = newest;
-  }, [visibleNotifications]);
 
   useEffect(() => {
     if (!open) return;
@@ -211,7 +231,8 @@ function NotificationBell() {
     };
   }, [open]);
 
-  const unread = visibleUnread;
+  const unread = data?.unread ?? 0;
+  const taskNews = Object.keys(data?.tasks ?? {}).length;
   const go = (n: AppNotification) => {
     setOpen(false);
     if (!n.readAt) markRead.mutate([n.id]);
@@ -252,9 +273,22 @@ function NotificationBell() {
                 </button>
               )}
             </div>
+            {taskNews > 0 && (
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  navigate('/app');
+                }}
+                className="flex w-full items-center gap-2.5 border-b border-line bg-s-open-soft/50 px-4 py-2.5 text-left text-xs text-ink-2 hover:bg-s-open-soft"
+                data-testid="bell-task-news"
+              >
+                <span className="grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[11px] font-semibold text-white">{taskNews}</span>
+                {taskNews === 1 ? 'A task has' : `${taskNews} tasks have`} new messages or updates: look for the red badge on the task.
+              </button>
+            )}
             <ul className="max-h-[60vh] overflow-y-auto">
-              {visibleNotifications.length === 0 && <li className="px-4 py-8 text-center text-sm text-faint">You're all caught up.</li>}
-              {visibleNotifications.map((n) => (
+              {(data?.notifications ?? []).length === 0 && <li className="px-4 py-8 text-center text-sm text-faint">Nothing else for you right now.</li>}
+              {(data?.notifications ?? []).map((n) => (
                 <li key={n.id}>
                   <button onClick={() => go(n)} className={cx('flex w-full gap-3 px-4 py-3 text-left hover:bg-milk', !n.readAt && 'bg-s-approved-soft/40')}>
                     <span className={cx('mt-1.5 size-2 shrink-0 rounded-full', n.readAt ? 'bg-transparent' : 'bg-s-approved')} />

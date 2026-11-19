@@ -9,7 +9,7 @@ import { pickDriveFile } from '../lib/google';
 import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { clock, dueLabel, timeAgo, toLocalInput } from '../lib/format';
-import { memberName, useComment, useTaskDetail, useTransition, useUpdateTask, type WorkspaceData } from './data';
+import { memberName, useComment, useMarkTaskRead, useNotifications, useTaskDetail, useTransition, useUpdateTask, type WorkspaceData } from './data';
 import { memberOptions, priorityOptions } from './options';
 
 export function TaskDrawer({ taskId, intent, onClose, ws }: { taskId: string | null; intent: string | null; onClose: () => void; ws: WorkspaceData }) {
@@ -26,6 +26,13 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
   const update = useUpdateTask();
   const toast = useToast();
   const [modal, setModal] = useState<'submit' | 'block' | 'request_changes' | null>(intent === 'submit' ? 'submit' : null);
+  // Looking at the task reads its news: the red badge on its card goes away (also for news that
+  // arrives while it's open).
+  const news = useNotifications().data?.tasks[taskId]?.count ?? 0;
+  const markRead = useMarkTaskRead();
+  useEffect(() => {
+    if (news > 0 && !markRead.isPending) markRead.mutate(taskId);
+  }, [news, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
     return (

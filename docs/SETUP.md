@@ -74,10 +74,11 @@ Demo data lives in memory and resets when the API restarts.
 ## 2. Supabase (database, sign-in, storage)
 
 1. Go to [supabase.com](https://supabase.com) → **New project**. Pick the region closest to your users (e.g. *West EU (Ireland)* or *Frankfurt* for Nigeria). Save the database password somewhere safe.
-2. Open **SQL Editor → New query** and run the three migrations **in order**. Paste each file and press **Run**:
+2. Open **SQL Editor → New query** and run the four migrations **in order**. Paste each file and press **Run**:
    1. [`supabase/migrations/20261112000000_init.sql`](../supabase/migrations/20261112000000_init.sql): workspaces, tasks, the append-only ledger, Row Level Security, the `proofs` storage bucket, and Realtime.
    2. [`supabase/migrations/20261113000000_saas.sql`](../supabase/migrations/20261113000000_saas.sql): task numbers (`DLG-12`), subscriptions, integrations, notifications, playbooks, escalation fields and the webhook de-duplication table.
    3. [`supabase/migrations/20261114000000_accounts.sql`](../supabase/migrations/20261114000000_accounts.sql): **Leave workspace / Delete account** (erases a deleted person's name from the history) and a security fix that stops browsers from calling the workspace-delete function.
+   4. [`supabase/migrations/20261119000000_private_tasks.sql`](../supabase/migrations/20261119000000_private_tasks.sql): **private tasks**. The owner sees every task; everyone else only the tasks given to them, the ones they handed out, and a task that's blocked waiting on them. Enforced in the database too, so nobody can read around the app.
 
    *(With the Supabase CLI instead: `supabase link --project-ref <ref>` then `supabase db push`.)*
 3. Open **Project Settings → API Keys** and copy:
@@ -260,7 +261,8 @@ Delegate tells you why on the sign-in page itself, in a red box. The usual cause
 |---|---|
 | *…the package "…" isn't installed* | You pulled new code. Run `npm install`, then `npm run dev` again. (`npm run dev` also checks this before starting.) |
 | *The Delegate API isn't responding* | The API part of `npm run dev` stopped. Look in that terminal for a red `[api]` line. After pulling new code, `npm install` is usually the fix. |
-| *…missing the latest migration* | In Supabase → SQL Editor, run the file the message names (`20261113000000_saas.sql` and/or `20261114000000_accounts.sql`, oldest first). Refresh the page; no restart needed. |
+| *…missing the latest migration* | In Supabase → SQL Editor, run the file the message names (`20261113000000_saas.sql`, `20261114000000_accounts.sql` or `20261119000000_private_tasks.sql`, oldest first). Refresh the page; no restart needed. |
+| *Database update needed … private_tasks.sql* | In Supabase → SQL Editor, run `supabase/migrations/20261119000000_private_tasks.sql`. Refresh the page. |
 | *Security update needed* | In Supabase → SQL Editor, run `supabase/migrations/20261114000000_accounts.sql`. Refresh the page. |
 | *…the database is empty* | Run every file in `supabase/migrations`, oldest first. |
 | *…is required in production* | Your `.env` says `NODE_ENV=production`. Locally, use `NODE_ENV=development`. On Vercel, add the named variable and redeploy. |

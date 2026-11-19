@@ -123,6 +123,12 @@ export class SupabaseStore implements Store {
       if (erase.error && (['PGRST202', '42883'].includes(erase.error.code ?? '') || /could not find the function|does not exist/i.test(erase.error.message))) {
         return `The Supabase database is missing the latest migration: open Supabase → SQL Editor and run ${ACCOUNTS}.`;
       }
+      // Private tasks: row-level security that hides other people's tasks from browsers.
+      const PRIVATE = 'supabase/migrations/20261119000000_private_tasks.sql';
+      const priv = await this.db.rpc('can_see_task', { p_task: NIL_UUID });
+      if (priv.error && (['PGRST202', '42883'].includes(priv.error.code ?? '') || /could not find the function|does not exist/i.test(priv.error.message))) {
+        return `Database update needed: open Supabase → SQL Editor and run ${PRIVATE} (it keeps each person's tasks private).`;
+      }
       // Security: browsers must not be able to purge a workspace. Probing with a nil id deletes nothing.
       if (this.publicDb) {
         const { error } = await this.publicDb.rpc('purge_organization', { p_org: NIL_UUID });
@@ -478,15 +484,22 @@ export class SupabaseStore implements Store {
     if (!list.length) return;
     check(await this.db.from('notifications').insert(list.map((n) => snake({ ...n }))), 'saving notifications');
   }
-  async listNotifications(userId: string, limit: number) {
+  async listNotifications(userId: string, limit: number, scope: 'all' | 'general' = 'all') {
+    let q = this.db.from('notifications').select('*').eq('user_id', userId);
+    if (scope === 'general') q = q.is('task_id', null);
+    return rows(await q.order('created_at', { ascending: false }).limit(limit), 'listing notifications').map((r) => camel<AppNotification>(r));
+  }
+  async listUnreadNotifications(userId: string) {
     return rows(
-      await this.db.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit),
-      'listing notifications',
+      await this.db.from('notifications').select('*').eq('user_id', userId).is('read_at', null).order('created_at', { ascending: false }).limit(500),
+      'listing unread notifications',
     ).map((r) => camel<AppNotification>(r));
   }
-  async markNotificationsRead(userId: string, ids: string[] | 'all') {
+  async markNotificationsRead(userId: string, ids: string[] | 'all' | { taskId: string }) {
     let q = this.db.from('notifications').update({ read_at: new Date().toISOString() }).eq('user_id', userId).is('read_at', null);
-    if (ids !== 'all') q = q.in('id', ids);
+    if (ids === 'all') q = q.is('task_id', null);
+    else if (Array.isArray(ids)) q = q.in('id', ids);
+    else q = q.eq('task_id', ids.taskId);
     check(await q, 'marking notifications read');
   }
 
