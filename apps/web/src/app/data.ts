@@ -84,6 +84,8 @@ function useInvalidateWork() {
     qc.invalidateQueries({ queryKey: ['feed'] });
     qc.invalidateQueries({ queryKey: ['velocity'] });
     qc.invalidateQueries({ queryKey: ['standup'] });
+    qc.invalidateQueries({ queryKey: ['history'] });
+    qc.invalidateQueries({ queryKey: ['audits'] });
     if (taskId) qc.invalidateQueries({ queryKey: ['task', taskId] });
   };
 }
@@ -235,12 +237,14 @@ const toQuery = (f: Record<string, string | number | undefined>) => {
   return q.toString();
 };
 
-export function useHistory(f: TaskFilters, page: number) {
+/** Earlier days for the owner's "Waiting on me" board (up to 500 tasks per view). */
+export function useHistory(f: TaskFilters, enabled = true, pageSize = 500) {
   return useQuery({
-    queryKey: ['history', f, page],
-    queryFn: () => api.get<HistoryResponse>(`/history?${toQuery({ ...f, page })}`),
+    queryKey: ['history', f, pageSize],
+    queryFn: () => api.get<HistoryResponse>(`/history?${toQuery({ ...f, pageSize })}`),
     placeholderData: (prev) => prev,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
+    enabled,
   });
 }
 

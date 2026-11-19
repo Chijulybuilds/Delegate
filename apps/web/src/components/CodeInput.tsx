@@ -66,7 +66,7 @@ export function CodeInput({
               <motion.div
                 className={cx(
                   'relative grid place-items-center rounded-2xl border bg-paper font-medium tabular-nums tracking-tight shadow-[var(--shadow-card)] transition-colors duration-200',
-                  boxes > 6 ? 'h-12 w-9 text-[22px] sm:h-14 sm:w-11 sm:text-[24px]' : 'h-14 w-11 text-[26px] sm:h-[60px] sm:w-12',
+                  boxes > 6 ? 'h-12 w-9 text-[1.375rem] sm:h-14 sm:w-11 sm:text-[1.5rem]' : 'h-14 w-11 text-[1.625rem] sm:h-[60px] sm:w-12',
                   state === 'error' ? 'border-s-open text-s-open-ink' : state === 'success' ? 'border-s-done text-s-done-ink' : active ? 'border-ink' : digit ? 'border-line-2' : 'border-line',
                   disabled && state === 'idle' && 'opacity-60',
                 )}

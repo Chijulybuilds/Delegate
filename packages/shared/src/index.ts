@@ -572,7 +572,7 @@ export interface NotificationsResponse {
   /** Unread in the bell. */
   unread: number;
   /** Unread news per task, shown as a red badge on that task's card. */
-  tasks: Record<string, { count: number; latest: Pick<AppNotification, 'type' | 'title' | 'createdAt'> }>;
+  tasks: Record<string, { count: number; latest: Pick<AppNotification, 'type' | 'title' | 'body' | 'createdAt'> }>;
   /** Newest unread notification of any kind (plays the sound when it changes). */
   latest: Pick<AppNotification, 'id' | 'createdAt'> | null;
 }
@@ -677,7 +677,7 @@ export interface BoardResponse {
   verified: Record<string, ProofSource>;
   /** Today in the workspace's time zone: the board shows tasks given out since `start`. */
   day: { start: string; timezone: string };
-  /** Earlier days (on the History page) that still need something. */
+  /** Earlier days (the owner's "Waiting on me" page) that still need something. Zero for everyone else. */
   earlier: { unfinished: number; awaitingAudit: number };
 }
 
@@ -703,9 +703,13 @@ export interface TaskFilters {
   from?: string;
   /** Before (ISO). */
   to?: string;
+  /** Time of day the task was given out, "HH:MM" in the workspace's time zone: from (inclusive)… */
+  fromTime?: string;
+  /** …to (exclusive). */
+  toTime?: string;
 }
 /** Audits filter by when the task was audited. */
-export type AuditFilters = Omit<TaskFilters, 'status'>;
+export type AuditFilters = Omit<TaskFilters, 'status' | 'fromTime' | 'toTime'>;
 
 export interface AuditsResponse {
   rows: AuditRow[];
@@ -714,7 +718,7 @@ export interface AuditsResponse {
   pageSize: number;
 }
 
-/** GET /api/history — tasks from earlier days (filtered by the day they were given out). */
+/** GET /api/history — tasks from earlier days, owner only (filtered by the day and time they were given out). */
 export interface HistoryResponse extends AuditsResponse {
   timezone: string;
 }

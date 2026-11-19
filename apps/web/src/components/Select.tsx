@@ -29,7 +29,7 @@ export interface SelectOption<T extends string = string> {
 type Size = 'sm' | 'md' | 'inline';
 
 const triggerSize: Record<Size, string> = {
-  sm: 'h-9 rounded-full pl-3.5 pr-2.5 text-[13px] gap-2',
+  sm: 'h-9 rounded-full pl-3.5 pr-2.5 text-[0.8125rem] gap-2',
   md: 'h-11 w-full rounded-xl pl-3.5 pr-3 text-sm gap-2.5',
   inline: 'h-8 -ml-2 rounded-lg px-2 text-sm font-medium gap-1.5',
 };

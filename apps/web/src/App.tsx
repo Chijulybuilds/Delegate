@@ -15,7 +15,7 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const AppShell = lazy(() => import('./app/AppShell'));
 const BoardPage = lazy(() => import('./app/BoardPage'));
 const HeartbeatPage = lazy(() => import('./app/HeartbeatPage'));
-const HistoryPage = lazy(() => import('./app/HistoryPage'));
+const WaitingPage = lazy(() => import('./app/WaitingPage'));
 const AuditsPage = lazy(() => import('./app/AuditsPage'));
 const InsightsPage = lazy(() => import('./app/InsightsPage'));
 const PlaybooksPage = lazy(() => import('./app/PlaybooksPage'));
@@ -67,7 +67,8 @@ export function App() {
           }
         >
           <Route index element={<BoardPage />} />
-          <Route path="history" element={<HistoryPage />} />
+          <Route path="waiting" element={<WaitingPage />} />
+          <Route path="history" element={<Navigate to="/app/waiting" replace />} />
           <Route path="audits" element={<AuditsPage />} />
           <Route path="activity" element={<HeartbeatPage />} />
           <Route path="insights" element={<InsightsPage />} />

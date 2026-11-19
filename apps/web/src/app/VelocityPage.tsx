@@ -58,7 +58,7 @@ export default function VelocityPage({ embedded = false }: { embedded?: boolean 
           </div>
 
           <Card className="p-5 sm:p-6">
-            <h2 className="text-[15px] font-medium">Tasks executed per day</h2>
+            <h2 className="text-[0.9375rem] font-medium">Tasks executed per day</h2>
             <p className="text-xs text-faint">Submitted with proof, by day</p>
             <div className="mt-6">
               <ColumnChart
@@ -79,7 +79,7 @@ export default function VelocityPage({ embedded = false }: { embedded?: boolean 
           <Card className="overflow-hidden">
             <div className="flex items-end justify-between px-5 pb-3 pt-5 sm:px-6">
               <div>
-                <h2 className="text-[15px] font-medium">Operator leaderboard</h2>
+                <h2 className="text-[0.9375rem] font-medium">Operator leaderboard</h2>
                 <p className="text-xs text-faint">Fastest average time to green first</p>
               </div>
             </div>
@@ -112,7 +112,7 @@ export default function VelocityPage({ embedded = false }: { embedded?: boolean 
                       <td className="py-3 text-right tabular-nums">{pct(r.onTimeRate)}</td>
                       <td className="px-5 py-3 text-right tabular-nums sm:px-6">
                         {r.openNow}
-                        {r.blockedNow > 0 && <span className="ml-1.5 rounded-full bg-s-active-soft px-1.5 py-0.5 text-[11px] text-s-active-ink">{r.blockedNow} blocked</span>}
+                        {r.blockedNow > 0 && <span className="ml-1.5 rounded-full bg-s-active-soft px-1.5 py-0.5 text-[0.6875rem] text-s-active-ink">{r.blockedNow} blocked</span>}
                       </td>
                     </tr>
                   ))}

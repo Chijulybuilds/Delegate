@@ -65,7 +65,7 @@ export function IntegrationsTab({ ws }: { ws: WorkspaceData }) {
       {canManage && (
         <Card className="overflow-hidden">
           <div className="px-5 pb-3 pt-5">
-            <h2 className="text-[15px] font-medium">Recent deliveries</h2>
+            <h2 className="text-[0.9375rem] font-medium">Recent deliveries</h2>
             <p className="text-xs text-faint">Every message sent to Slack, Teams, WhatsApp and email — useful when something didn't arrive.</p>
           </div>
           {data.deliveries.length === 0 ? (
@@ -112,8 +112,8 @@ function Shell({ icon, title, blurb, s, children, testId }: { icon: ReactNode; t
         <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-milk">{icon}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-[15px] font-medium">{title}</h3>
-            <span className={cx('rounded-full px-2 py-0.5 text-[11px] font-medium', s.connected ? 'bg-s-done-soft text-s-done-ink' : 'bg-milk text-mute')} data-testid={`${testId}-status`}>
+            <h3 className="text-[0.9375rem] font-medium">{title}</h3>
+            <span className={cx('rounded-full px-2 py-0.5 text-[0.6875rem] font-medium', s.connected ? 'bg-s-done-soft text-s-done-ink' : 'bg-milk text-mute')} data-testid={`${testId}-status`}>
               {s.connected ? 'Connected' : 'Not connected'}
             </span>
           </div>
@@ -333,7 +333,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   const toast = useToast();
   return (
     <div>
-      <p className="text-[11px] uppercase tracking-[0.12em] text-faint">{label}</p>
+      <p className="text-[0.6875rem] uppercase tracking-[0.12em] text-faint">{label}</p>
       <div className="mt-1 flex items-center gap-2">
         <code className="min-w-0 flex-1 truncate rounded-lg bg-milk px-2 py-1.5 font-mono text-xs">{value}</code>
         <button onClick={() => navigator.clipboard?.writeText(value).then(() => toast.success(`${label} copied`))} className="grid size-8 place-items-center rounded-full text-mute hover:bg-ink/5 hover:text-ink" aria-label={`Copy ${label}`}>

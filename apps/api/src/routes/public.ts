@@ -25,7 +25,8 @@ export function publicRoutes(deps: {
 }) {
   const { config, store, verifier, workspace } = deps;
   const r = Router();
-  const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false });
+  // Sign-in and joining: 60 tries per 15 minutes per address in production; roomy in development and tests.
+  const authLimiter = rateLimit({ windowMs: 15 * 60_000, limit: config.isProduction ? 60 : 2000, standardHeaders: 'draft-8', legacyHeaders: false });
 
   r.get('/health', async (_req, res) => {
     const issue = await deps.setupIssue();

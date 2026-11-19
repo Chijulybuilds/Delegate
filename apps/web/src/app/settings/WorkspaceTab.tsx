@@ -38,7 +38,7 @@ export function WorkspaceTab({ ws }: { ws: WorkspaceData }) {
 
   return (
     <Card className="max-w-xl p-6">
-      <h2 className="text-[15px] font-medium">Workspace</h2>
+      <h2 className="text-[0.9375rem] font-medium">Workspace</h2>
       <form onSubmit={save} className="mt-5 space-y-4">
         <Field label="Name">
           <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!isOwner} minLength={2} maxLength={60} />

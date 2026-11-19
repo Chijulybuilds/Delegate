@@ -104,7 +104,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
           <h2 className="text-2xl font-medium leading-tight tracking-[-0.03em]" data-testid="drawer-title">
             {task.title}
           </h2>
-          {task.description && <p className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-ink-2">{task.description}</p>}
+          {task.description && <p className="mt-3 whitespace-pre-wrap text-[0.9375rem] leading-relaxed text-ink-2">{task.description}</p>}
 
           {/* Action bar */}
           {actions.length > 0 && (
@@ -288,7 +288,7 @@ function ProofItem({ proof, taskId, author }: { proof: TaskProof; taskId: string
         )}
         {proof.note && <p className={cx('text-ink-2', proof.kind !== 'note' && 'mt-0.5')}>{proof.note}</p>}
         {proof.source !== 'manual' && (
-          <span className={cx('mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium', proof.verified ? 'bg-s-approved-soft text-s-approved-ink' : 'bg-milk text-mute')}>
+          <span className={cx('mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium', proof.verified ? 'bg-s-approved-soft text-s-approved-ink' : 'bg-milk text-mute')}>
             {proof.verified ? <ShieldCheck className="size-3" /> : null}
             {proof.verified ? 'Verified by' : 'From'} {proof.source === 'gdrive' ? 'Google Drive' : proof.source === 'github' ? 'GitHub' : 'WhatsApp'}
           </span>
@@ -332,7 +332,7 @@ function Chat({ taskId, comments, ws }: { taskId: string; comments: Array<{ id: 
                 <Avatar name={memberName(ws.members, c.authorId)} size={26} />
                 <div className={cx('max-w-[78%] rounded-2xl px-3.5 py-2 text-sm', mine ? 'rounded-tr-md bg-ink text-milk' : 'rounded-tl-md border border-line bg-paper')}>
                   <p className="whitespace-pre-wrap">{c.body}</p>
-                  <p className={cx('mt-1 text-[11px]', mine ? 'text-milk/50' : 'text-faint')}>
+                  <p className={cx('mt-1 text-[0.6875rem]', mine ? 'text-milk/50' : 'text-faint')}>
                     {mine ? 'You' : memberName(ws.members, c.authorId).split(' ')[0]} · {timeAgo(c.createdAt)}
                   </p>
                 </div>

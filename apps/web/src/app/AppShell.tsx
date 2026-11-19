@@ -1,5 +1,5 @@
 import { isManagerRole, type AppNotification } from '@delegate/shared';
-import { Activity, Bell, BarChart3, History, KanbanSquare, Repeat2, Settings, ShieldCheck, Users } from 'lucide-react';
+import { Activity, Bell, BarChart3, Hourglass, KanbanSquare, Repeat2, Settings, ShieldCheck, Users } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
@@ -12,7 +12,7 @@ import { UserMenu } from './UserMenu';
 
 const NAV = [
   { to: '/app', label: 'Today', icon: KanbanSquare, end: true },
-  { to: '/app/history', label: 'History', icon: History },
+  { to: '/app/waiting', label: 'Waiting on me', icon: Hourglass, ownerOnly: true },
   { to: '/app/audits', label: 'Audits', icon: ShieldCheck, ownerOnly: true },
   { to: '/app/activity', label: 'Activity', icon: Activity },
   { to: '/app/insights', label: 'Insights', icon: BarChart3 },
@@ -20,6 +20,9 @@ const NAV = [
   { to: '/app/team', label: 'Team', icon: Users },
   { to: '/app/settings', label: 'Settings', icon: Settings },
 ];
+
+/** Test id for a menu item: /app → today, /app/waiting → waiting… */
+const navId = (to: string) => (to === '/app' ? 'today' : to.split('/').pop()!);
 
 /** Plays Delegate's chime whenever a new notification arrives (never for what was already there). */
 function useNotificationSound() {
@@ -71,7 +74,7 @@ export default function AppShell() {
   const newsIds = Object.keys(notes?.tasks ?? {});
   const newsToday = newsIds.filter((id) => todayIds.has(id)).length;
   const newsEarlier = board.data ? newsIds.length - newsToday : 0;
-  const badge: Record<string, number> = { Today: newsToday, History: newsEarlier };
+  const badge: Record<string, number> = { Today: newsToday, 'Waiting on me': role === 'owner' ? newsEarlier : 0 };
 
   return (
     <div className="min-h-dvh bg-milk lg:grid lg:grid-cols-[240px_1fr]">
@@ -96,9 +99,9 @@ export default function AppShell() {
               to={n.to}
               end={n.end}
               className={({ isActive }) =>
-                cx('relative flex h-11 items-center gap-3 rounded-xl px-3 text-[14px] transition-colors duration-300', isActive ? 'font-medium text-milk' : 'text-mute hover:bg-ink/[0.05] hover:text-ink')
+                cx('relative flex h-11 items-center gap-3 rounded-xl px-3 text-[0.875rem] transition-colors duration-300', isActive ? 'font-medium text-milk' : 'text-mute hover:bg-ink/[0.05] hover:text-ink')
               }
-              data-testid={`nav-${n.label.toLowerCase()}`}
+              data-testid={`nav-${navId(n.to)}`}
             >
               {({ isActive }) => (
                 <>
@@ -116,9 +119,9 @@ export default function AppShell() {
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
-                      className="relative ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[11px] font-semibold text-white"
+                      className="relative ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[0.6875rem] font-semibold text-white"
                       title="Tasks with new messages or updates"
-                      data-testid={`nav-news-${n.label.toLowerCase()}`}
+                      data-testid={`nav-news-${navId(n.to)}`}
                     >
                       {badge[n.label]}
                     </motion.span>
@@ -138,7 +141,7 @@ export default function AppShell() {
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-line bg-milk/85 px-4 backdrop-blur-xl lg:hidden">
         <div className="flex min-w-0 items-center gap-2">
           <LogoMark className="size-7 shrink-0" />
-          <span className="truncate text-[15px] font-medium tracking-[-0.02em]">{ws.data.org.name}</span>
+          <span className="truncate text-[0.9375rem] font-medium tracking-[-0.02em]">{ws.data.org.name}</span>
         </div>
         <div className="flex items-center gap-1">
           <NotificationBell />
@@ -160,7 +163,7 @@ export default function AppShell() {
             key={n.to}
             to={n.to}
             end={n.end}
-            className={({ isActive }) => cx('relative flex h-14 min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px]', isActive ? 'font-medium text-ink' : 'text-faint')}
+            className={({ isActive }) => cx('relative flex h-14 min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 text-[0.625rem]', isActive ? 'font-medium text-ink' : 'text-faint')}
           >
             {({ isActive }) => (
               <>
@@ -231,8 +234,16 @@ function NotificationBell() {
     };
   }, [open]);
 
+  const board = useBoard();
+  const role = useWorkspace().data?.me.role;
   const unread = data?.unread ?? 0;
-  const taskNews = Object.keys(data?.tasks ?? {}).length;
+  const todayIds = new Set((board.data?.tasks ?? []).map((t) => t.id));
+  const allTaskNews = Object.entries(data?.tasks ?? {});
+  // Today's cards carry their own red badge. News on earlier tasks is listed here, so everyone can
+  // still reach it (the owner also finds those tasks under "Waiting on me").
+  const earlierNews = board.data ? allTaskNews.filter(([id]) => !todayIds.has(id)).sort((a, b) => b[1].latest.createdAt.localeCompare(a[1].latest.createdAt)) : [];
+  const taskNews = allTaskNews.length - earlierNews.length;
+  const bellCount = unread + earlierNews.length;
   const go = (n: AppNotification) => {
     setOpen(false);
     if (!n.readAt) markRead.mutate([n.id]);
@@ -244,14 +255,14 @@ function NotificationBell() {
       <button
         onClick={() => setOpen((o) => !o)}
         className="relative grid size-9 place-items-center rounded-full text-ink-2 hover:bg-ink/5"
-        aria-label={unread ? `Notifications (${unread} unread)` : 'Notifications'}
+        aria-label={bellCount ? `Notifications (${bellCount} unread)` : 'Notifications'}
         aria-expanded={open}
         data-testid="bell"
       >
         <Bell className="size-[18px]" strokeWidth={1.8} />
-        {unread > 0 && (
-          <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-s-open px-1 text-[10px] font-semibold leading-4 text-white" data-testid="bell-count">
-            {unread > 9 ? '9+' : unread}
+        {bellCount > 0 && (
+          <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-s-open px-1 text-[0.625rem] font-semibold leading-4 text-white" data-testid="bell-count">
+            {bellCount > 9 ? '9+' : bellCount}
           </span>
         )}
       </button>
@@ -273,6 +284,29 @@ function NotificationBell() {
                 </button>
               )}
             </div>
+            {earlierNews.length > 0 && (
+              <div className="border-b border-line" data-testid="bell-earlier">
+                <p className="px-4 pb-1 pt-2.5 text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-faint">Earlier tasks</p>
+                {earlierNews.slice(0, 8).map(([taskId, n]) => (
+                  <button
+                    key={taskId}
+                    onClick={() => {
+                      setOpen(false);
+                      navigate(role === 'owner' ? `/app/waiting?task=${taskId}` : `/app?task=${taskId}`);
+                    }}
+                    className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-milk"
+                    data-testid="bell-earlier-item"
+                  >
+                    <span className="mt-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[0.6875rem] font-semibold text-white">{n.count}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium leading-snug">{n.latest.title}</span>
+                      <span className="mt-0.5 line-clamp-1 block text-xs text-mute">{n.latest.body}</span>
+                      <span className="mt-0.5 block text-[0.6875rem] text-faint">{timeAgo(n.latest.createdAt)}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             {taskNews > 0 && (
               <button
                 onClick={() => {
@@ -282,8 +316,8 @@ function NotificationBell() {
                 className="flex w-full items-center gap-2.5 border-b border-line bg-s-open-soft/50 px-4 py-2.5 text-left text-xs text-ink-2 hover:bg-s-open-soft"
                 data-testid="bell-task-news"
               >
-                <span className="grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[11px] font-semibold text-white">{taskNews}</span>
-                {taskNews === 1 ? 'A task has' : `${taskNews} tasks have`} new messages or updates: look for the red badge on the task.
+                <span className="grid h-5 min-w-5 place-items-center rounded-full bg-s-open px-1.5 text-[0.6875rem] font-semibold text-white">{taskNews}</span>
+                {taskNews === 1 ? 'A task on today’s board has' : `${taskNews} tasks on today’s board have`} new messages or updates: look for the red badge on the card.
               </button>
             )}
             <ul className="max-h-[60vh] overflow-y-auto">
@@ -295,7 +329,7 @@ function NotificationBell() {
                     <span className="min-w-0">
                       <span className="block text-sm font-medium leading-snug">{n.title}</span>
                       <span className="mt-0.5 line-clamp-2 block text-xs text-mute">{n.body}</span>
-                      <span className="mt-1 block text-[11px] text-faint">{timeAgo(n.createdAt)}</span>
+                      <span className="mt-1 block text-[0.6875rem] text-faint">{timeAgo(n.createdAt)}</span>
                     </span>
                   </button>
                 </li>

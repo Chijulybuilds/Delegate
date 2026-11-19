@@ -134,7 +134,7 @@ export default function TeamPage() {
                     aria-label={`Role for ${m.fullName}`}
                   />
                 ) : (
-                  <span className="rounded-full border border-line px-3 py-1 text-[13px] text-ink-2">{roleLabel[m.role]}</span>
+                  <span className="rounded-full border border-line px-3 py-1 text-[0.8125rem] text-ink-2">{roleLabel[m.role]}</span>
                 )}
                 {isManager && (
                   <span className="grid size-9 place-items-center">
@@ -159,10 +159,10 @@ export default function TeamPage() {
         <div className="space-y-4">
           {isOwner ? (
             <Card className="p-5">
-              <h2 className="text-[15px] font-medium">Invite your team</h2>
+              <h2 className="text-[0.9375rem] font-medium">Invite your team</h2>
               <p className="mt-1 text-sm text-mute">Teammates sign in (Google or email), then enter this code to join as staff. Only you can see it.</p>
               <div className="mt-4 flex items-center gap-2">
-                <code className="flex-1 rounded-xl border border-line bg-milk px-3.5 py-2.5 font-mono text-[15px] tracking-wider" data-testid="invite-code">
+                <code className="flex-1 rounded-xl border border-line bg-milk px-3.5 py-2.5 font-mono text-[0.9375rem] tracking-wider" data-testid="invite-code">
                   {ws.org.inviteCode}
                 </code>
                 <Button
@@ -181,7 +181,7 @@ export default function TeamPage() {
             </Card>
           ) : (
             <Card className="p-5" data-testid="invite-owner-only">
-              <h2 className="text-[15px] font-medium">Adding someone?</h2>
+              <h2 className="text-[0.9375rem] font-medium">Adding someone?</h2>
               <p className="mt-1 text-sm text-mute">
                 Only the workspace owner{owner ? <>, <span className="font-medium text-ink">{owner.fullName}</span>,</> : ''} can invite people. Ask them to share the invite code.
               </p>
@@ -189,7 +189,7 @@ export default function TeamPage() {
           )}
 
           <Card className="p-5">
-            <h2 className="text-[15px] font-medium">Departments</h2>
+            <h2 className="text-[0.9375rem] font-medium">Departments</h2>
             <p className="mt-1 text-sm text-mute">Swimlanes for filtering the board without losing the global rhythm.</p>
             <ul className="mt-4 space-y-2">
               {ws.departments.map((d) => (

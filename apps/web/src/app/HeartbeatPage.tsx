@@ -90,7 +90,7 @@ export default function HeartbeatPage() {
                       >
                         <Avatar name={memberName(ws.data.members, e.actorId)} size={30} />
                         <div className="min-w-0 flex-1">
-                          <p className="text-[14.5px] leading-snug">
+                          <p className="text-[0.9062rem] leading-snug">
                             {e.taskId ? (
                               <Link to={`/app?task=${e.taskId}`} className="hover:underline">
                                 {describeEvent(e, ws.data, true)}

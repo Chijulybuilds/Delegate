@@ -55,7 +55,7 @@ export function AutomationsTab({ ws }: { ws: WorkspaceData }) {
   return (
     <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
       <Card className="p-6">
-        <h2 className="text-[15px] font-medium">Escalation ladder</h2>
+        <h2 className="text-[0.9375rem] font-medium">Escalation ladder</h2>
         <p className="mt-1 text-sm text-mute">Blocked work climbs automatically, so nothing sits stuck in silence.</p>
         {locked && <p className="mt-3 rounded-xl bg-milk px-3 py-2 text-xs text-mute">Escalations are part of the Team plan.</p>}
         <form onSubmit={(e) => save(e, 'escalation')} className="mt-5 space-y-4" data-testid="escalation-form">
@@ -83,7 +83,7 @@ export function AutomationsTab({ ws }: { ws: WorkspaceData }) {
       </Card>
 
       <Card className="p-6">
-        <h2 className="text-[15px] font-medium">Morning brief</h2>
+        <h2 className="text-[0.9375rem] font-medium">Morning brief</h2>
         <p className="mt-1 text-sm text-mute">Yesterday's shipped work, today's tickets and every blocker — to Slack/Teams, WhatsApp and managers' email.</p>
         <form onSubmit={(e) => save(e, 'digest')} className="mt-5 space-y-4">
           <label className="flex items-center gap-3 text-sm">
@@ -111,7 +111,7 @@ export function AutomationsTab({ ws }: { ws: WorkspaceData }) {
       {canManage && (
         <Card className="flex flex-wrap items-center justify-between gap-3 p-6 lg:col-span-2">
           <div>
-            <h2 className="text-[15px] font-medium">Run checks now</h2>
+            <h2 className="text-[0.9375rem] font-medium">Run checks now</h2>
             <p className="text-sm text-mute">Automations run every few minutes on their own. Use this to test your settings immediately.</p>
           </div>
           <Button variant="outline" onClick={runNow} loading={busy === 'run'} data-testid="run-automations">

@@ -1,7 +1,7 @@
 import { LANES, type TaskFilters as ApiFilters, type TaskPriority } from '@delegate/shared';
 import { Flag, Layers, Search, Users, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { DateRangePicker, rangeToIso, type DayRange } from '../components/DateRangePicker';
 import { cx, EASE, Select } from '../components/ui';
@@ -9,8 +9,8 @@ import type { WorkspaceData } from './data';
 import { memberOptions, priorityOptions } from './options';
 
 /**
- * The filter bar for History and Audits: a search box (title, DLG number or a person's name),
- * person, priority, status (History) and a date range. Filters live in the address bar, so a
+ * The filter bar for "Waiting on me" and Audits: a search box (title, DLG number or a person's name),
+ * person, priority, a date range and extra controls (e.g. time of day). Filters live in the address bar, so a
  * filtered view can be bookmarked, shared, or reached from a link (e.g. "?status=done").
  */
 
@@ -20,6 +20,9 @@ export interface FilterState {
   priority: string;
   status: string;
   range: DayRange;
+  /** Time of day the task was given out, "HH:MM" (Waiting on me). */
+  fromTime: string;
+  toTime: string;
 }
 
 const LANE_DOT: Record<string, string> = { open: 'var(--color-s-open)', active: 'var(--color-s-active)', done: 'var(--color-s-done)', approved: 'var(--color-s-approved)' };
@@ -33,6 +36,8 @@ export function useFilterParams() {
     priority: params.get('priority') ?? 'all',
     status: params.get('status') ?? 'all',
     range: { from: params.get('from') ?? undefined, to: params.get('to') ?? undefined },
+    fromTime: params.get('ft') ?? '',
+    toTime: params.get('tt') ?? '',
   };
   const page = Math.max(1, Number(params.get('page')) || 1);
   // Only the keys in `patch` change, starting from the address as it is right now (not as it was
@@ -48,6 +53,8 @@ export function useFilterParams() {
       put('from', patch.range.from);
       put('to', patch.range.to);
     }
+    if (patch.fromTime !== undefined) put('ft', patch.fromTime);
+    if (patch.toTime !== undefined) put('tt', patch.toTime);
     put('page', patch.page && patch.page > 1 ? String(patch.page) : undefined);
     setParams(p, { replace: true });
   };
@@ -60,12 +67,14 @@ export function toApiFilters(f: FilterState, withStatus: boolean): ApiFilters {
     assigneeId: f.person !== 'all' ? f.person : undefined,
     priority: f.priority !== 'all' ? (f.priority as TaskPriority) : undefined,
     status: withStatus && f.status !== 'all' ? (f.status as ApiFilters['status']) : undefined,
+    fromTime: f.fromTime || undefined,
+    toTime: f.toTime || undefined,
     ...rangeToIso(f.range),
   };
 }
 
 export function isFiltered(f: FilterState) {
-  return !!(f.q.trim() || f.person !== 'all' || f.priority !== 'all' || f.status !== 'all' || f.range.from || f.range.to);
+  return !!(f.q.trim() || f.person !== 'all' || f.priority !== 'all' || f.status !== 'all' || f.range.from || f.range.to || f.fromTime || f.toTime);
 }
 
 export function FilterBar({
@@ -75,13 +84,16 @@ export function FilterBar({
   show,
   maxDay,
   testId = 'filters',
+  children,
 }: {
   value: FilterState;
   onChange: (patch: Partial<FilterState>) => void;
   ws: WorkspaceData;
-  show: { person: boolean; status: boolean };
+  show: { person: boolean; status: boolean; dates?: boolean };
   maxDay?: string;
   testId?: string;
+  /** Extra controls, placed before "Reset". */
+  children?: ReactNode;
 }) {
   // Typing feels instant; the search runs a moment after you pause.
   const [q, setQ] = useState(value.q);
@@ -100,7 +112,7 @@ export function FilterBar({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search tasks, DLG-12 or a name"
-          className="h-9 w-full rounded-full border border-line bg-paper pl-9 pr-8 text-[13px] outline-none transition-[border,box-shadow] placeholder:text-faint hover:border-line-2 focus:border-ink focus:ring-4 focus:ring-ink/[0.06]"
+          className="h-9 w-full rounded-full border border-line bg-paper pl-9 pr-8 text-[0.8125rem] outline-none transition-[border,box-shadow] placeholder:text-faint hover:border-line-2 focus:border-ink focus:ring-4 focus:ring-ink/[0.06]"
           aria-label="Search"
           data-testid={`${testId}-search`}
         />
@@ -153,7 +165,8 @@ export function FilterBar({
           data-testid={`${testId}-status`}
         />
       )}
-      <DateRangePicker value={value.range} onChange={(range) => onChange({ range })} maxDay={maxDay} data-testid={`${testId}-dates`} />
+      {show.dates !== false && <DateRangePicker value={value.range} onChange={(range) => onChange({ range })} maxDay={maxDay} data-testid={`${testId}-dates`} />}
+      {children}
 
       <AnimatePresence>
         {isFiltered(value) && (
@@ -165,9 +178,9 @@ export function FilterBar({
             transition={{ duration: 0.2, ease: EASE }}
             onClick={() => {
               setQ('');
-              onChange({ q: '', person: 'all', priority: 'all', status: 'all', range: {} });
+              onChange({ q: '', person: 'all', priority: 'all', status: 'all', range: {}, fromTime: '', toTime: '' });
             }}
-            className={cx('h-9 rounded-full px-3 text-[13px] text-mute transition-colors hover:bg-ink/[0.05] hover:text-ink')}
+            className={cx('h-9 rounded-full px-3 text-[0.8125rem] text-mute transition-colors hover:bg-ink/[0.05] hover:text-ink')}
             data-testid={`${testId}-reset`}
           >
             Reset

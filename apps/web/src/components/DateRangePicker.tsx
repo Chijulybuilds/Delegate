@@ -111,7 +111,7 @@ export function DateRangePicker({ value, onChange, maxDay, 'data-testid': testId
         aria-expanded={open}
         aria-controls={open ? uid : undefined}
         className={cx(
-          'inline-flex h-9 items-center gap-2 rounded-full border pl-3.5 pr-2.5 text-[13px] transition-[border,background,box-shadow]',
+          'inline-flex h-9 items-center gap-2 rounded-full border pl-3.5 pr-2.5 text-[0.8125rem] transition-[border,background,box-shadow]',
           open ? 'border-ink bg-paper ring-4 ring-ink/[0.06]' : active ? 'border-ink/70 bg-paper text-ink' : 'border-line bg-paper text-ink-2 hover:border-line-2',
         )}
         data-testid={testId}
@@ -146,7 +146,7 @@ export function DateRangePicker({ value, onChange, maxDay, 'data-testid': testId
                   key={p.id}
                   type="button"
                   onClick={() => apply(p.range)}
-                  className={cx('shrink-0 rounded-xl px-3 py-2 text-left text-[13px] transition-colors', on ? 'bg-ink font-medium text-milk' : 'text-ink-2 hover:bg-ink/[0.05]')}
+                  className={cx('shrink-0 rounded-xl px-3 py-2 text-left text-[0.8125rem] transition-colors', on ? 'bg-ink font-medium text-milk' : 'text-ink-2 hover:bg-ink/[0.05]')}
                   data-testid={`${testId}-preset-${p.id}`}
                 >
                   {p.label}
@@ -175,7 +175,7 @@ export function DateRangePicker({ value, onChange, maxDay, 'data-testid': testId
                 <ChevronRight className="size-4" />
               </button>
             </div>
-            <div className="grid grid-cols-7 text-center text-[11px] font-medium text-faint">
+            <div className="grid grid-cols-7 text-center text-[0.6875rem] font-medium text-faint">
               {DOW.map((d) => (
                 <span key={d} className="py-1">
                   {d}
@@ -197,7 +197,7 @@ export function DateRangePicker({ value, onChange, maxDay, 'data-testid': testId
                       onClick={() => pick(k)}
                       onMouseEnter={() => setHover(k)}
                       className={cx(
-                        'relative mx-auto grid size-9 place-items-center rounded-full text-[13px] tabular-nums transition-colors',
+                        'relative mx-auto grid size-9 place-items-center rounded-full text-[0.8125rem] tabular-nums transition-colors',
                         edge ? 'bg-ink font-medium text-milk' : outside ? 'text-faint' : 'text-ink-2 hover:bg-ink/[0.08]',
                         disabled && 'pointer-events-none opacity-30',
                         k === today && !edge && 'font-semibold text-ink underline decoration-2 underline-offset-4',
@@ -215,13 +215,13 @@ export function DateRangePicker({ value, onChange, maxDay, 'data-testid': testId
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
               <p className="text-xs text-mute">{draft.from ? (draft.to ? rangeLabel(draft) : `${short(draft.from)} – pick the last day`) : 'Pick the first day'}</p>
               <div className="flex gap-1.5">
-                <button type="button" onClick={() => setDraft({})} className="rounded-full px-3 py-1.5 text-[13px] text-mute hover:bg-ink/[0.05] hover:text-ink">
+                <button type="button" onClick={() => setDraft({})} className="rounded-full px-3 py-1.5 text-[0.8125rem] text-mute hover:bg-ink/[0.05] hover:text-ink">
                   Clear
                 </button>
                 <button
                   type="button"
                   onClick={() => apply(draft.from && !draft.to ? { from: draft.from, to: draft.from } : draft)}
-                  className="rounded-full bg-ink px-4 py-1.5 text-[13px] font-medium text-milk transition-transform active:scale-95"
+                  className="rounded-full bg-ink px-4 py-1.5 text-[0.8125rem] font-medium text-milk transition-transform active:scale-95"
                   data-testid={`${testId}-apply`}
                 >
                   Apply

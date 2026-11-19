@@ -137,6 +137,22 @@ test.describe('SaaS layer', () => {
     await expect(card(page, title).getByTestId('task-news')).toHaveCount(0);
   });
 
+  test('staff reach news on an earlier task from the bell', async ({ page, request }) => {
+    const ada = (await (await request.post('/api/auth/demo', { data: { personaId: 'demo-ada' } })).json()).token;
+    const history = (await (await request.get('/api/history?q=SSO', { headers: { Authorization: `Bearer ${ada}` } })).json()) as { rows: Array<{ task: { id: string } }> };
+    const sso = history.rows[0]!.task.id; // given to Tunde yesterday
+    await request.post(`/api/tasks/${sso}/comments`, { headers: { Authorization: `Bearer ${ada}` }, data: { body: 'Any word from their IT team?' } });
+
+    await loginAs(page, 'demo-tunde');
+    await expect(page.locator('[data-testid="bell-count"]:visible')).toHaveText('1');
+    await page.locator('[data-testid="bell"]:visible').click();
+    await expect(page.getByTestId('bell-earlier-item')).toContainText('Any word from their IT team?');
+    await page.getByTestId('bell-earlier-item').click();
+    await expect(page.getByTestId('drawer-title')).toHaveText('Integrate SSO for enterprise pilot');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid="bell-count"]:visible')).toHaveCount(0);
+  });
+
   test('the notification sound can be switched off', async ({ page }) => {
     await loginAs(page, 'demo-tunde');
     await page.getByTestId('user-menu').click();

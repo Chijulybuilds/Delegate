@@ -137,7 +137,7 @@ export function saasRoutes(deps: {
     const tasks: NotificationsResponse['tasks'] = {};
     for (const n of unread) {
       if (!n.taskId) continue;
-      const slot = (tasks[n.taskId] ??= { count: 0, latest: { type: n.type, title: n.title, createdAt: n.createdAt } });
+      const slot = (tasks[n.taskId] ??= { count: 0, latest: { type: n.type, title: n.title, body: n.body, createdAt: n.createdAt } });
       slot.count++;
     }
     const body: NotificationsResponse = {
