@@ -173,6 +173,7 @@ export class WorkspaceService {
   async updateOrg(ctx: Ctx, patch: { name?: string; timezone?: string; regenerateInvite?: boolean; settings?: Partial<Organization['settings']> }) {
     if (!isManagerRole(ctx.role)) throw forbidden('Only managers can change workspace settings');
     if (patch.name !== undefined && ctx.role !== 'owner') throw forbidden('Only the owner can rename the workspace');
+    if (patch.regenerateInvite && ctx.role !== 'owner') throw forbidden('Only the workspace owner can manage the invite code');
     const org = await this.store.getOrg(ctx.orgId);
     if (!org) throw notFound('Workspace not found');
     if (patch.settings?.escalation?.enabled) await this.billing.require(ctx.orgId, 'escalations', 'Escalation alerts');

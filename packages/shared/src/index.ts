@@ -83,6 +83,11 @@ export function isManagerRole(role: MemberRole | null | undefined): boolean {
   return role === 'owner' || role === 'manager';
 }
 
+/** The workspace as a member sees it: only the owner gets the invite code (only they bring people in). */
+export function orgForRole<T extends { inviteCode: string }>(org: T, role: MemberRole | null | undefined): T {
+  return role === 'owner' ? org : { ...org, inviteCode: '' };
+}
+
 /**
  * Who can see a task. The owner sees everything. Everyone else sees only work that involves them:
  * tasks assigned to them, tasks they handed out, and a task that's blocked waiting on them.

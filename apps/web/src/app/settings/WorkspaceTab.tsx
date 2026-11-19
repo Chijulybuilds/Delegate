@@ -46,9 +46,11 @@ export function WorkspaceTab({ ws }: { ws: WorkspaceData }) {
         <Field label="Time zone" hint="Due times, playbooks and the morning brief follow this zone.">
           <Select value={timezone} onChange={setTimezone} options={zoneOptions} disabled={ws.me.role === 'member'} aria-label="Time zone" />
         </Field>
-        <Field label="Invite code" hint="Share it with teammates — manage it on the Team page.">
-          <Input value={ws.org.inviteCode} readOnly className="font-mono tracking-wider" />
-        </Field>
+        {isOwner && (
+          <Field label="Invite code" hint="Only you can see it. Share it with new teammates; make a new one on the Team page.">
+            <Input value={ws.org.inviteCode} readOnly className="font-mono tracking-wider" data-testid="settings-invite-code" />
+          </Field>
+        )}
         {ws.me.role !== 'member' && (
           <Button type="submit" loading={busy}>
             Save changes

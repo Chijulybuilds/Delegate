@@ -1,4 +1,5 @@
--- Delegate · private tasks (run after 20261114000000_accounts.sql). Safe to run more than once.
+-- Delegate · private tasks and owner-only invite codes (run after 20261114000000_accounts.sql).
+-- Safe to run more than once.
 --
 -- The workspace owner sees every task. Everyone else sees only the work that involves them:
 -- tasks assigned to them, tasks they handed out, and a task that's blocked waiting on them.
@@ -63,3 +64,17 @@ create policy "task_events: visible tasks" on public.task_events for select to a
       else public.is_org_owner(org_id) or (actor_id = (select auth.uid()) and public.is_org_member(org_id))
     end
   );
+
+-- ── Invite codes: the owner's alone ─────────────────────────────────────────────────────────
+-- Only the owner brings people in. Browsers may read their workspace's name and settings, but not
+-- its invite code; the owner gets the code through the API.
+revoke select on public.organizations from authenticated;
+grant select (id, name, slug, plan, status, timezone, created_at, settings, task_seq) on public.organizations to authenticated;
+
+-- Lets the API check that this file has run: browsers must not be able to read invite codes.
+create or replace function public.invite_codes_readable_by_browsers() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select has_column_privilege('authenticated', 'public.organizations', 'invite_code', 'SELECT');
+$$;
+revoke execute on function public.invite_codes_readable_by_browsers() from public, anon, authenticated;
+grant execute on function public.invite_codes_readable_by_browsers() to service_role;

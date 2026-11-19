@@ -164,3 +164,32 @@ describe('every day starts with an empty board; earlier days go to History', () 
     expect(await history(await login('demo-maya'))).not.toContain(old.id);
   });
 });
+
+describe('invite codes belong to the owner', () => {
+  it('only the owner sees the code or makes a new one', async () => {
+    const ada = await login('demo-ada');
+    const kemi = await login('demo-kemi');
+    const tunde = await login('demo-tunde');
+
+    const owner = (await request(app).get('/api/workspace').set(auth(ada)).expect(200)).body.org.inviteCode;
+    expect(owner).toBe('LUMEN-2026');
+    for (const token of [kemi, tunde]) {
+      expect((await request(app).get('/api/workspace').set(auth(token)).expect(200)).body.org.inviteCode).toBe('');
+      expect((await request(app).get('/api/me').set(auth(token)).expect(200)).body.membership.org.inviteCode).toBe('');
+      expect(JSON.stringify((await request(app).get('/api/workspace').set(auth(token))).body)).not.toContain('LUMEN-2026');
+    }
+    // Managers can still change other settings, but not the invite code.
+    await request(app).patch('/api/workspace').set(auth(kemi)).send({ regenerateInvite: true }).expect(403);
+    const settings = await request(app).patch('/api/workspace').set(auth(kemi)).send({ timezone: 'Africa/Lagos' }).expect(200);
+    expect(settings.body.org.inviteCode).toBe('');
+
+    const fresh = (await request(app).patch('/api/workspace').set(auth(ada)).send({ regenerateInvite: true }).expect(200)).body.org.inviteCode;
+    expect(fresh).toMatch(/^[A-Z]+-[A-Z0-9]{4}$/);
+    expect(fresh).not.toBe(owner);
+
+    // Someone joining gets in, but doesn't get the code back.
+    const joiner = (await request(app).post('/api/auth/demo').send({ email: 'new@lumen.example', fullName: 'New Person' }).expect(200)).body.token;
+    const joined = await request(app).post('/api/onboarding/join').set(auth(joiner)).send({ code: fresh }).expect(201);
+    expect(joined.body.org.inviteCode).toBe('');
+  });
+});

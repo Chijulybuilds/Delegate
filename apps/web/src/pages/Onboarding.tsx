@@ -101,7 +101,7 @@ export default function Onboarding() {
             </span>
             <h2 className="mt-5 text-lg font-medium tracking-[-0.02em]">Join with an invite code</h2>
             <p className="mt-1 text-sm text-mute">
-              Ask your manager for the code on their Team page.
+              Ask your workspace owner for the code.
               {config?.authMode === 'demo' && (
                 <>
                   {' '}
