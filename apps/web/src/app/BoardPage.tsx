@@ -205,8 +205,8 @@ export default function BoardPage() {
         })}
       </div>
 
-      {/* Every day starts fresh: earlier work is available to the owner in History. */}
-      {isOwner && board.data && earlier > 0 && (
+      {/* Every day starts fresh: earlier work is on History (everyone sees their own). */}
+      {board.data && earlier > 0 && (
         <Link
           to="/app/waiting"
           className="group mx-4 mb-4 flex items-center gap-3 rounded-2xl border border-dashed border-line-2 px-4 py-2.5 text-sm text-ink-2 transition-colors hover:border-ink hover:text-ink sm:mx-8"
@@ -298,7 +298,7 @@ export default function BoardPage() {
         <div className="px-4 pb-10 sm:px-8">
           <EmptyState
             title="Your board is empty"
-            body={isOwner ? 'Every day starts with a fresh board; earlier tasks are in History. Assign the first task of the day: it lands red on the assignee’s board.' : 'Every day starts with a fresh board. Your tasks for today will appear here.'}
+            body={isOwner ? 'Every day starts with a fresh board; earlier tasks are in History. Assign the first task of the day: it lands red on the assignee’s board.' : 'Every day starts with a fresh board. Your tasks for today will appear here; earlier ones are in History.'}
             action={<Button onClick={() => setCreating(true)}>Create the first task</Button>}
           />
         </div>

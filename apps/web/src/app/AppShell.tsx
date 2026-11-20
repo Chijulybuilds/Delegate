@@ -12,7 +12,7 @@ import { UserMenu } from './UserMenu';
 
 const NAV = [
   { to: '/app', label: 'Today', icon: KanbanSquare, end: true },
-  { to: '/app/waiting', label: 'History', icon: Hourglass, ownerOnly: true },
+  { to: '/app/waiting', label: 'History', icon: Hourglass },
   { to: '/app/audits', label: 'Audits', icon: ShieldCheck, ownerOnly: true },
   { to: '/app/activity', label: 'Activity', icon: Activity },
   { to: '/app/insights', label: 'Insights', icon: BarChart3 },
@@ -74,7 +74,7 @@ export default function AppShell() {
   const newsIds = Object.keys(notes?.tasks ?? {});
   const newsToday = newsIds.filter((id) => todayIds.has(id)).length;
   const newsEarlier = board.data ? newsIds.length - newsToday : 0;
-  const badge: Record<string, number> = { Today: newsToday, History: role === 'owner' ? newsEarlier : 0 };
+  const badge: Record<string, number> = { Today: newsToday, History: newsEarlier };
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[256px_1fr]">
@@ -240,8 +240,8 @@ function NotificationBell() {
   const unread = data?.unread ?? 0;
   const todayIds = new Set((board.data?.tasks ?? []).map((t) => t.id));
   const allTaskNews = Object.entries(data?.tasks ?? {});
-  // Today's cards carry their own red badge. News on earlier tasks is listed here, so everyone can
-  // still reach it (the owner also finds those tasks under "History").
+  // Today's cards carry their own red badge. News on earlier tasks is listed here too (those tasks
+  // live on History).
   const earlierNews = board.data ? allTaskNews.filter(([id]) => !todayIds.has(id)).sort((a, b) => b[1].latest.createdAt.localeCompare(a[1].latest.createdAt)) : [];
   const taskNews = allTaskNews.length - earlierNews.length;
   const bellCount = unread + earlierNews.length;
@@ -293,7 +293,7 @@ function NotificationBell() {
                     key={taskId}
                     onClick={() => {
                       setOpen(false);
-                      navigate(role === 'owner' ? `/app/waiting?task=${taskId}` : `/app?task=${taskId}`);
+                      navigate(`/app/waiting?task=${taskId}`);
                     }}
                     className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-milk"
                     data-testid="bell-earlier-item"

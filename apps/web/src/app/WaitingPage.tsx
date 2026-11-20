@@ -2,7 +2,7 @@ import type { Task, TransitionAction } from '@delegate/shared';
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMemo } from 'react';
-import { Navigate, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { dayKey, rangeLabel, type DayRange } from '../components/DateRangePicker';
 import { TimePicker } from '../components/DateTimePicker';
 import { useToast } from '../components/Toast';
@@ -14,7 +14,8 @@ import { FilterBar, isFiltered, toApiFilters, useFilterParams } from './TaskFilt
 import { TaskDrawer } from './TaskDrawer';
 
 /**
- * History (owner only): every task from earlier days, laid out exactly like Today
+ * History: every task from earlier days the viewer can see (all of them for the owner, their own
+ * for everyone else), laid out exactly like Today
  * (Open · In motion · Executed · Audited). The Today board starts empty each morning; this is where
  * yesterday and every day before wait for the owner. Step through days, pick a range, narrow to a
  * time of day, a person or a priority, or search. Tasks open and can still be worked on.
@@ -39,10 +40,12 @@ const fromKey = (k: string) => {
 
 export default function WaitingPage() {
   const ws = useWorkspace();
-  const isOwner = ws.data?.me.role === 'owner';
+  const role = ws.data?.me.role;
+  const isOwner = role === 'owner';
+  const isManager = role === 'owner' || role === 'manager';
   const { state, set } = useFilterParams();
   const [params, setParams] = useSearchParams();
-  const history = useHistory(toApiFilters(state, false), isOwner);
+  const history = useHistory(toApiFilters(state, false), !!ws.data);
   const news = useNotifications().data?.tasks ?? {};
   const transition = useTransition();
   const toast = useToast();
@@ -70,7 +73,6 @@ export default function WaitingPage() {
   const windowValue = WINDOWS.find((w) => w.value !== 'custom' && w.value !== 'any' && w.from === state.fromTime && w.to === state.toTime)?.value ?? (state.fromTime || state.toTime ? 'custom' : 'any');
 
   if (!ws.data) return <Spinner className="m-8" />;
-  if (!isOwner) return <Navigate to="/app" replace />;
 
   const step = (n: number) => {
     const base = single ?? (n < 0 ? addDays(yesterday, 1) : addDays(yesterday, -1));
@@ -97,7 +99,16 @@ export default function WaitingPage() {
 
   return (
     <div>
-      <PageHeader title="History" subtitle="Every task from earlier days, laid out like Today. Only you, the owner, can see this page." />
+      <PageHeader
+        title="History"
+        subtitle={
+          isOwner
+            ? 'Every task from earlier days, laid out like Today. Only you, the owner, see everyone’s.'
+            : isManager
+              ? 'Your tasks from earlier days, and the ones you handed out, laid out like Today.'
+              : 'Your tasks from earlier days, laid out like Today. Unfinished ones can still be opened and finished here.'
+        }
+      />
 
       <div className="z-20 space-y-3 border-b border-[var(--edge)] bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0 lg:bg-panel">
         {/* The day: step back and forth, or pick a range */}
@@ -130,7 +141,7 @@ export default function WaitingPage() {
           )}
         </div>
 
-        <FilterBar value={state} onChange={set} ws={ws.data} show={{ person: true, status: false }} maxDay={yesterday} testId="waiting-filters">
+        <FilterBar value={state} onChange={set} ws={ws.data} show={{ person: isManager, status: false }} maxDay={yesterday} testId="waiting-filters">
           <Select
             size="sm"
             value={windowValue}
@@ -163,7 +174,7 @@ export default function WaitingPage() {
               {isFiltered(state) ? ' match' : ''}
             </span>
             {counts.unfinished > 0 && <span className="text-s-open-ink">{counts.unfinished} unfinished</span>}
-            {counts.awaiting > 0 && <span className="text-s-done-ink">{counts.awaiting} awaiting your audit</span>}
+            {counts.awaiting > 0 && <span className="text-s-done-ink">{counts.awaiting} {isManager ? 'awaiting your audit' : 'awaiting audit'}</span>}
             {counts.audited > 0 && <span>{counts.audited} audited</span>}
             {(history.data?.total ?? 0) > rows.length && <span>Showing the newest {rows.length}; narrow the dates to see the rest.</span>}
             {history.isFetching && <Spinner className="size-4" />}

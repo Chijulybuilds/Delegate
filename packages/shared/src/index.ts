@@ -677,7 +677,7 @@ export interface BoardResponse {
   verified: Record<string, ProofSource>;
   /** Today in the workspace's time zone: the board shows tasks given out since `start`. */
   day: { start: string; timezone: string };
-  /** Earlier days (the owner's "Waiting on me" page) that still need something. Zero for everyone else. */
+  /** Earlier days (on History) that still need something, among the tasks the viewer can see. */
   earlier: { unfinished: number; awaitingAudit: number };
 }
 
@@ -718,7 +718,7 @@ export interface AuditsResponse {
   pageSize: number;
 }
 
-/** GET /api/history — tasks from earlier days, owner only (filtered by the day and time they were given out). */
+/** GET /api/history — earlier tasks the viewer can see (filtered by the day and time they were given out). */
 export interface HistoryResponse extends AuditsResponse {
   timezone: string;
 }

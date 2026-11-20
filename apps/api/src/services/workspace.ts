@@ -221,14 +221,11 @@ export class WorkspaceService {
       aiVerdicts,
       verified,
       day: { start: dayStart, timezone },
-      // Earlier days belong to the owner's "Waiting on me" page.
-      earlier:
-        ctx.role === 'owner'
-          ? {
-              unfinished: before.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked').length,
-              awaitingAudit: before.filter((t) => t.status === 'done').length,
-            }
-          : { unfinished: 0, awaitingAudit: 0 },
+      // Earlier days live on History; everyone sees their own (the owner sees all of them).
+      earlier: {
+        unfinished: before.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked').length,
+        awaitingAudit: isManagerRole(ctx.role) ? before.filter((t) => t.status === 'done').length : 0,
+      },
     };
   }
 
@@ -315,9 +312,8 @@ export class WorkspaceService {
     return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
   }
 
-  /** Earlier days (the owner's "Waiting on me" page): every task given out before today, newest first. */
+  /** History: every earlier task the viewer can see (all of them for the owner; their own for everyone else), newest first. */
   async history(ctx: Ctx, f: TaskFilters, page = 1, pageSize = 60): Promise<HistoryResponse> {
-    if (ctx.role !== 'owner') throw forbidden('Only the workspace owner can see earlier days');
     const org = await this.store.getOrg(ctx.orgId);
     const timezone = org?.timezone || 'UTC';
     const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
