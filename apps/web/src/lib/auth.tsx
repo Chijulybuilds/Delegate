@@ -44,7 +44,12 @@ interface AuthState {
   resendConfirmation: (email: string) => Promise<void>;
   /** Checks the code from the sign-up email; on success the person is signed in. */
   verifyEmailCode: (email: string, code: string) => Promise<void>;
-  updatePassword: (password: string) => Promise<void>;
+  /** Sets or changes the password of the signed-in person. `nonce` = the code from a re-authentication email. */
+  updatePassword: (password: string, nonce?: string) => Promise<void>;
+  /** How the signed-in person can log in (a Google sign-up can add a password later). */
+  signInMethods: () => Promise<{ email: string; google: boolean; password: boolean }>;
+  /** Emails a code to confirm it's really them (Supabase asks for it before some password changes). */
+  sendReauthCode: () => Promise<void>;
   /** Email links that carry ?token_hash=…&type=… (confirm sign-up, reset password). */
   verifyEmailLink: (tokenHash: string, type: string) => Promise<void>;
   signInDemo: (input: { personaId: string } | { email: string; fullName: string }) => Promise<void>;
@@ -199,12 +204,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const updatePassword = useCallback(
-    async (password: string) => {
-      const { error } = await (await supabase()).auth.updateUser({ password });
-      if (error) throw friendlyAuthError(error);
+    async (password: string, nonce?: string) => {
+      // has_password lets Settings show "Email & password" for Google sign-ups that added one.
+      const { error } = await (await supabase()).auth.updateUser({ password, ...(nonce ? { nonce } : {}), data: { has_password: true } });
+      if (error) throw friendlyAuthError(error, nonce ? 'code' : 'link');
     },
     [supabase],
   );
+
+  const signInMethods = useCallback(async () => {
+    const { data, error } = await (await supabase()).auth.getUser();
+    if (error || !data.user) throw friendlyAuthError(error ?? { message: 'Not signed in' });
+    const u = data.user;
+    const providers = new Set([...(u.identities ?? []).map((i) => i.provider), ...((u.app_metadata?.providers as string[] | undefined) ?? [])]);
+    return { email: u.email ?? '', google: providers.has('google'), password: providers.has('email') || u.user_metadata?.has_password === true };
+  }, [supabase]);
+
+  const sendReauthCode = useCallback(async () => {
+    const { error } = await (await supabase()).auth.reauthenticate();
+    if (error) throw friendlyAuthError(error);
+  }, [supabase]);
 
   const verifyEmailLink = useCallback(
     async (tokenHash: string, type: string) => {
@@ -250,12 +269,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       resendConfirmation,
       verifyEmailCode,
       updatePassword,
+      signInMethods,
+      sendReauthCode,
       verifyEmailLink,
       signInDemo,
       signOut,
       refreshMe: () => meQuery.refetch(),
     }),
-    [config, configQuery.isError, configQuery.error, meErrorMessage, sessionChecked, token, meQuery, signInWithGoogle, signUpWithPassword, signInWithPassword, sendPasswordReset, resendConfirmation, verifyEmailCode, updatePassword, verifyEmailLink, signInDemo, signOut],
+    [config, configQuery.isError, configQuery.error, meErrorMessage, sessionChecked, token, meQuery, signInWithGoogle, signUpWithPassword, signInWithPassword, sendPasswordReset, resendConfirmation, verifyEmailCode, updatePassword, signInMethods, sendReauthCode, verifyEmailLink, signInDemo, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -280,6 +301,12 @@ function friendlyAuthError(error: { message: string; code?: string; status?: num
   // "For security purposes, you can only request this after 42 seconds."
   const wait = /after (\d+) seconds?/i.exec(msg);
   if (wait) return new AuthUiError(`Please wait ${wait[1]} seconds before asking for another email.`, 'wait', Number(wait[1]));
+  if (code === 'reauthentication_needed' || /requires reauthentication/i.test(msg)) {
+    return new AuthUiError('To keep your account safe, confirm it’s you with the code we email you.', 'reauthentication_needed');
+  }
+  if (code === 'reauthentication_not_valid' || /nonce/i.test(msg)) {
+    return new AuthUiError('That code is wrong or has expired. Check the newest email, or send a new code.', 'code_invalid');
+  }
   if (code === 'over_email_send_rate_limit' || /email rate limit/i.test(msg)) {
     return new AuthUiError('Too many emails have gone out in the last hour. Try again a little later, or use Google.', 'email_rate_limited', 60);
   }

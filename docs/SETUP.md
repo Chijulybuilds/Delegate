@@ -138,6 +138,8 @@ People can sign up and log in with an email and password as well as with Google.
      2. In Supabase → **SMTP Settings**: Sender email = that Gmail address, Sender name = `Delegate`, Host = `smtp.gmail.com`, Port = `465`, Username = the Gmail address, Password = the 16-letter app password.
    - Then, under **Authentication → Rate Limits**, raise *emails sent per hour* (e.g. to 100).
 
+- **Google sign-ups can add a password later** (Settings → Account → Password). Then they can log in either way. If **Secure password change** is on (Authentication → Sign In / Providers → Email) and their session is older than a day, Supabase emails a code first; the **Reauthentication** template (Authentication → Emails → Templates) must contain `{{ .Token }}`, which it does by default. Subject suggestion: `Your Delegate confirmation code`.
+
 Flow:
 - **Sign up:** name, email, password → **Enter your code** (6 boxes; paste works, and phones offer the code from Mail) → signed in → onboarding. *Send a new code* unlocks after 60 seconds, the minimum Supabase allows.
 - **Log in:** email + password. An address that was never confirmed gets a code the same way. **Forgot password?** → email link → `/auth/reset` → new password → the board.

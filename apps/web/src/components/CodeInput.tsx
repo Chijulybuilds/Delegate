@@ -51,7 +51,8 @@ export function CodeInput({
     const digits = raw.replace(/\D/g, '').slice(0, 10);
     if (digits === value) return;
     onChange(digits);
-    if (digits.length >= length && digits.length > value.length) onComplete?.(digits);
+    // Submit once the code is complete: typed to the last box, or pasted over (even over a wrong one).
+    if (digits.length === length || (digits.length > length && digits.length - value.length > 1)) onComplete?.(digits);
   };
 
   return (
