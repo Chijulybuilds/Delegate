@@ -136,6 +136,10 @@ export class SupabaseStore implements Store {
         const { error } = await this.publicDb.rpc('purge_organization', { p_org: NIL_UUID });
         if (!error) return `Security update needed: open Supabase → SQL Editor and run ${ACCOUNTS} (it stops browsers from calling the workspace-delete function).`;
       }
+      // Recall (newest migration).
+      if (await missing('tasks', 'id, recalled_from_id, recalled_to_id')) {
+        return 'The Supabase database is missing the latest migration: open Supabase → SQL Editor and run supabase/migrations/20261120000000_recall.sql.';
+      }
       return null;
     } catch (error) {
       return error instanceof Error && /fetch failed|ENOTFOUND|ECONNREFUSED|Invalid API key|JWT/i.test(error.message)

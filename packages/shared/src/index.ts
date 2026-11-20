@@ -83,6 +83,22 @@ export function isManagerRole(role: MemberRole | null | undefined): boolean {
   return role === 'owner' || role === 'manager';
 }
 
+/**
+ * Recall: bring a task from an earlier day back onto today's board (as a new task, linked to the
+ * original, which stays as it was). The owner can recall any earlier task, whatever happened to it;
+ * managers the ones they can see (handed out by them); staff their own unfinished ones.
+ */
+export function canRecall(
+  viewer: { userId: string; role: MemberRole },
+  task: { assigneeId: string; createdById: string; waitingOnId: string | null; status: TaskStatus; createdAt: string; recalledToId?: string | null },
+  todayStart: string,
+): boolean {
+  if (task.createdAt >= todayStart || task.recalledToId) return false;
+  if (viewer.role === 'owner') return true;
+  if (viewer.role === 'manager') return canSeeTask(viewer, task);
+  return task.assigneeId === viewer.userId && (task.status === 'open' || task.status === 'in_progress' || task.status === 'blocked');
+}
+
 /** The workspace as a member sees it: only the owner gets the invite code (only they bring people in). */
 export function orgForRole<T extends { inviteCode: string }>(org: T, role: MemberRole | null | undefined): T {
   return role === 'owner' ? org : { ...org, inviteCode: '' };
@@ -193,6 +209,10 @@ export interface Task {
   submittedAt: string | null;
   approvedAt: string | null;
   approvedById: string | null;
+  /** Recall: this task was brought back to its day from an earlier task… */
+  recalledFromId?: string | null;
+  /** …or this earlier task was brought back to a later day as another task. */
+  recalledToId?: string | null;
   /** When the current blocker was flagged (drives the escalation ladder). */
   blockedAt: string | null;
   /** 0 = none, 1 = managers alerted, 2 = owner alerted. Resets when the task moves. */
@@ -246,6 +266,7 @@ export type EventType =
   | 'task.commented'
   | 'task.escalated'
   | 'task.proof_attached'
+  | 'task.recalled'
   | 'member.joined'
   | 'member.role_changed'
   | 'member.left'
@@ -698,7 +719,9 @@ export interface TaskFilters {
   assigneeId?: string;
   priority?: TaskPriority;
   /** A board lane: open, active (in motion), done (executed), approved (audited). */
-  status?: (typeof LANES)[number]['id'];
+  status?: (typeof LANES)[number]['id'] | 'unfinished';
+  /** Only tasks the viewer may recall to today (the Recall page). */
+  recallable?: boolean;
   /** On or after (ISO). */
   from?: string;
   /** Before (ISO). */
@@ -709,7 +732,7 @@ export interface TaskFilters {
   toTime?: string;
 }
 /** Audits filter by when the task was audited. */
-export type AuditFilters = Omit<TaskFilters, 'status' | 'fromTime' | 'toTime'>;
+export type AuditFilters = Omit<TaskFilters, 'status' | 'fromTime' | 'toTime' | 'recallable'>;
 
 export interface AuditsResponse {
   rows: AuditRow[];

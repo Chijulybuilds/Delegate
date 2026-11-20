@@ -1,5 +1,6 @@
 import {
   availableActions,
+  canRecall,
   canSeeTask,
   DEFAULT_ORG_SETTINGS,
   LANES,
@@ -223,8 +224,8 @@ export class WorkspaceService {
       day: { start: dayStart, timezone },
       // Earlier days live on History; everyone sees their own (the owner sees all of them).
       earlier: {
-        unfinished: before.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked').length,
-        awaitingAudit: isManagerRole(ctx.role) ? before.filter((t) => t.status === 'done').length : 0,
+        unfinished: before.filter((t) => !t.recalledToId && (t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked')).length,
+        awaitingAudit: isManagerRole(ctx.role) ? before.filter((t) => !t.recalledToId && t.status === 'done').length : 0,
       },
     };
   }
@@ -276,7 +277,7 @@ export class WorkspaceService {
     const q = f.q?.trim().toLowerCase().replace(/^#/, '');
     const from = f.from ? Date.parse(f.from) : null;
     const to = f.to ? Date.parse(f.to) : null;
-    const statuses = f.status ? (LANES.find((l) => l.id === f.status)?.statuses as readonly string[] | undefined) : undefined;
+    const statuses = f.status === 'unfinished' ? ['open', 'in_progress', 'blocked'] : f.status ? (LANES.find((l) => l.id === f.status)?.statuses as readonly string[] | undefined) : undefined;
     const minutes = (hhmm?: string) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
     const fromMin = minutes(f.fromTime);
     const toMin = minutes(f.toTime);
@@ -317,7 +318,7 @@ export class WorkspaceService {
     const org = await this.store.getOrg(ctx.orgId);
     const timezone = org?.timezone || 'UTC';
     const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
-    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => t.createdAt < dayStart && canSeeTask(ctx, t));
+    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => t.createdAt < dayStart && canSeeTask(ctx, t) && (!f.recallable || canRecall(ctx, t, dayStart)));
     const rows = this.filterRows(await this.describeTasks(ctx.orgId, tasks), f, (t) => t.createdAt, timezone);
     const start = (page - 1) * pageSize;
     return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize, timezone };
@@ -335,7 +336,12 @@ export class WorkspaceService {
     return { task, proofs, comments, events };
   }
 
-  async createTask(ctx: Ctx, input: CreateTaskInput, source: TaskSource = 'app', extra: { playbookId?: string; occurrenceKey?: string } = {}): Promise<Task> {
+  async createTask(
+    ctx: Ctx,
+    input: CreateTaskInput,
+    source: TaskSource = 'app',
+    extra: { playbookId?: string; occurrenceKey?: string; createdById?: string; recalledFromId?: string } = {},
+  ): Promise<Task> {
     const members = await this.store.listMembers(ctx.orgId);
     const assigneeId = input.assigneeId ?? ctx.userId;
     const assignee = members.find((m) => m.userId === assigneeId);
@@ -352,7 +358,7 @@ export class WorkspaceService {
       status: 'open',
       priority: input.priority ?? 'medium',
       assigneeId,
-      createdById: ctx.userId,
+      createdById: extra.createdById ?? ctx.userId,
       departmentId: departmentId ?? null,
       dueAt: input.dueAt ?? endOfToday(),
       blockedReason: null,
@@ -366,10 +372,69 @@ export class WorkspaceService {
       overdueAlertedAt: null,
       playbookId: extra.playbookId ?? null,
       occurrenceKey: extra.occurrenceKey ?? null,
+      ...(extra.recalledFromId ? { recalledFromId: extra.recalledFromId } : {}),
     });
-    await this.log(ctx.orgId, ctx.userId, 'task.created', task, { assigneeId, source }, null, 'open');
+    await this.log(ctx.orgId, ctx.userId, 'task.created', task, { assigneeId, source, ...(extra.recalledFromId ? { recalledFrom: extra.recalledFromId } : {}) }, null, 'open');
     await this.emit({ type: 'assigned', task, actorId: ctx.userId });
     return task;
+  }
+
+  /**
+   * Recall: an earlier task comes back onto today's board as a new task, linked both ways. The
+   * original keeps its history (an audited task stays audited) and stops counting as left over.
+   */
+  async recall(ctx: Ctx, id: string, opts: { assigneeId?: string; dueAt?: string | null; note?: string } = {}): Promise<{ task: Task; from: Task }> {
+    const org = await this.store.getOrg(ctx.orgId);
+    const tz = org?.timezone || 'UTC';
+    const dayStart = startOfDayInTz(new Date(), tz);
+    const from = await this.getTaskForCtx(ctx, id);
+    if (from.recalledToId) {
+      const to = await this.store.getTask(from.recalledToId);
+      throw conflict(`Already recalled${to ? ` as ${taskRef(to.seq)}` : ''}. Recall that one instead if it needs another day.`);
+    }
+    if (from.createdAt >= dayStart.toISOString()) throw badRequest('This task is already on today’s board.');
+    if (!canRecall(ctx, from, dayStart.toISOString())) {
+      throw forbidden(ctx.role === 'member' ? 'You can recall your own tasks that weren’t finished.' : 'You can’t recall this task.');
+    }
+    // Managers can hand it to someone else; staff bring their own work back.
+    const assigneeId = isManagerRole(ctx.role) ? (opts.assigneeId ?? from.assigneeId) : ctx.userId;
+    // A manager recalling it hands it out; staff keep the person who gave it to them (who can audit it).
+    const createdById = isManagerRole(ctx.role) ? ctx.userId : from.createdById;
+    const dueAt = opts.dueAt !== undefined ? opts.dueAt : this.dueTodayLike(from, dayStart, tz);
+    const task = await this.createTask(
+      ctx,
+      { title: from.title, description: from.description, priority: from.priority, assigneeId, departmentId: from.departmentId, dueAt: dueAt ?? undefined },
+      'app',
+      { createdById, recalledFromId: from.id },
+    );
+    await this.store.updateTask(from.id, { recalledToId: task.id });
+    await this.log(ctx.orgId, ctx.userId, 'task.recalled', from, { toTaskId: task.id, toRef: taskRef(task.seq), fromRef: taskRef(from.seq) });
+    if (opts.note?.trim()) await this.comment(ctx, task.id, opts.note.trim());
+    return { task: (await this.store.getTask(task.id)) ?? task, from: { ...from, recalledToId: task.id } };
+  }
+
+  /** Recall several at once (the Recall page). Each is checked on its own; failures are reported, not fatal. */
+  async recallMany(ctx: Ctx, ids: string[]) {
+    const recalled: Array<{ fromId: string; task: Task }> = [];
+    const skipped: Array<{ id: string; reason: string }> = [];
+    for (const id of [...new Set(ids)]) {
+      try {
+        const r = await this.recall(ctx, id);
+        recalled.push({ fromId: id, task: r.task });
+      } catch (error) {
+        skipped.push({ id, reason: error instanceof HttpError ? error.message : 'Could not recall this task' });
+      }
+    }
+    return { recalled, skipped };
+  }
+
+  /** The original's due time of day (workspace time), today, if that's still ahead; otherwise null (the usual end of day). */
+  private dueTodayLike(from: Task, dayStart: Date, tz: string): string | null {
+    if (!from.dueAt) return null;
+    const due = new Date(from.dueAt);
+    const sinceMidnight = due.getTime() - startOfDayInTz(due, tz).getTime();
+    const candidate = new Date(dayStart.getTime() + sinceMidnight);
+    return candidate.getTime() > Date.now() + 15 * 60_000 ? candidate.toISOString() : null;
   }
 
   async updateTask(ctx: Ctx, id: string, patch: Partial<CreateTaskInput>): Promise<Task> {

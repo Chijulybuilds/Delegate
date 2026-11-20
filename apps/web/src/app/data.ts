@@ -231,13 +231,31 @@ export function useMarkTaskRead() {
   });
 }
 
-const toQuery = (f: Record<string, string | number | undefined>) => {
+const toQuery = (f: Record<string, string | number | boolean | undefined>) => {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') q.set(k, String(v));
   return q.toString();
 };
 
 /** Earlier days for the owner's History board (up to 500 tasks per view). */
+/** Recall one earlier task to today (optionally to someone else, with a due time and a note). */
+export function useRecall() {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; assigneeId?: string; dueAt?: string | null; note?: string }) => api.post<{ task: Task; from: Task }>(`/tasks/${id}/recall`, body),
+    onSuccess: (r) => invalidate(r.from.id),
+  });
+}
+
+/** Recall several earlier tasks at once (the Recall page). */
+export function useRecallMany() {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: (taskIds: string[]) => api.post<{ recalled: Array<{ fromId: string; task: Task }>; skipped: Array<{ id: string; reason: string }> }>('/recall', { taskIds }),
+    onSuccess: () => invalidate(),
+  });
+}
+
 export function useHistory(f: TaskFilters, enabled = true, pageSize = 500) {
   return useQuery({
     queryKey: ['history', f, pageSize],

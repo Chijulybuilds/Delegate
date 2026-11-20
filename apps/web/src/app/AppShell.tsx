@@ -1,5 +1,5 @@
 import { isManagerRole, type AppNotification } from '@delegate/shared';
-import { Activity, Bell, BarChart3, Hourglass, KanbanSquare, Repeat2, Settings, ShieldCheck, Users } from 'lucide-react';
+import { Activity, Bell, BarChart3, Hourglass, KanbanSquare, Repeat2, RotateCcw, Settings, ShieldCheck, Users } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
@@ -13,6 +13,7 @@ import { UserMenu } from './UserMenu';
 const NAV = [
   { to: '/app', label: 'Today', icon: KanbanSquare, end: true },
   { to: '/app/waiting', label: 'History', icon: Hourglass },
+  { to: '/app/recall', label: 'Recall', icon: RotateCcw },
   { to: '/app/audits', label: 'Audits', icon: ShieldCheck, ownerOnly: true },
   { to: '/app/activity', label: 'Activity', icon: Activity },
   { to: '/app/insights', label: 'Insights', icon: BarChart3 },

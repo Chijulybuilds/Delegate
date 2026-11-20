@@ -1,5 +1,5 @@
-import { availableActions, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
-import { AlarmClock, ArrowRight, BellRing, CirclePlay, History, OctagonPause, Pause, Plus, RefreshCw, ShieldCheck, Sparkles, Users, type LucideIcon } from 'lucide-react';
+import { availableActions, canRecall, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
+import { AlarmClock, ArrowRight, BellRing, CirclePlay, History, OctagonPause, Pause, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -322,6 +322,7 @@ export function BoardLanes({
   busyId,
   emptyOpenHint = 'No tasks here yet',
   dayOf,
+  recall,
 }: {
   tasks: Task[];
   ws: WorkspaceData;
@@ -334,6 +335,8 @@ export function BoardLanes({
   emptyOpenHint?: string;
   /** When the board spans several days, each card shows the day it was given out. */
   dayOf?: (task: Task) => string | null;
+  /** On History: cards that may be recalled get a "Recall to today" button. */
+  recall?: { dayStart: string; onRecall: (task: Task) => void };
 }) {
   const isOwner = ws.me.role === 'owner';
   return (
@@ -366,6 +369,7 @@ export function BoardLanes({
                       verifiedBy={verified[t.id] ?? null}
                       news={news[t.id]?.count ?? 0}
                       day={dayOf?.(t) ?? null}
+                      onRecall={recall && canRecall({ userId: ws.me.userId, role: ws.me.role }, t, recall.dayStart) ? () => recall.onRecall(t) : undefined}
                       onOpen={() => onOpen(t.id)}
                       onQuick={(a) => onQuick(t, a)}
                       busy={busyId === t.id}
@@ -399,6 +403,7 @@ function TaskCard({
   verifiedBy,
   news = 0,
   day = null,
+  onRecall,
   onOpen,
   onQuick,
   busy,
@@ -411,6 +416,8 @@ function TaskCard({
   news?: number;
   /** The day it was given out (shown when a board spans several days). */
   day?: string | null;
+  /** History: bring this task back to today. */
+  onRecall?: () => void;
   onOpen: () => void;
   onQuick: (a: TransitionAction) => void;
   busy: boolean;
@@ -463,6 +470,15 @@ function TaskCard({
             {day}
           </span>
         )}
+        {(task.recalledFromId || task.recalledToId) && (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-s-approved-soft px-1.5 py-0.5 text-[0.625rem] font-medium text-s-approved-ink"
+            title={task.recalledFromId ? 'Recalled from an earlier day' : 'Recalled to a later day'}
+            data-testid={task.recalledFromId ? 'chip-recalled-from' : 'chip-recalled-to'}
+          >
+            <RotateCcw className="size-3" /> {task.recalledFromId ? 'Recalled' : 'Recalled on'}
+          </span>
+        )}
         {task.source !== 'app' && (
           <span className="rounded-full bg-milk px-1.5 py-0.5 text-[0.625rem] font-medium text-mute" title={`Created from ${SOURCE_LABEL[task.source]}`}>
             {SOURCE_LABEL[task.source]}
@@ -513,6 +529,22 @@ function TaskCard({
         </span>
       </div>
 
+      {onRecall && (
+        <div className={cx('mt-3', !(primary && QUICK[primary]) && 'border-t border-line pt-3')}>
+          <Button
+            size="sm"
+            variant="soft"
+            className="h-8 w-full"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRecall();
+            }}
+            data-testid="quick-recall"
+          >
+            <RotateCcw className="size-3.5" /> Recall to today
+          </Button>
+        </div>
+      )}
       {primary && QUICK[primary] && (
         <div className="mt-3 border-t border-line pt-3">
           <Button

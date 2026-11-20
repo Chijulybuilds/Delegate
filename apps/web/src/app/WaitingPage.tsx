@@ -1,7 +1,7 @@
 import type { Task, TransitionAction } from '@delegate/shared';
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { dayKey, rangeLabel, type DayRange } from '../components/DateRangePicker';
 import { TimePicker } from '../components/DateTimePicker';
@@ -9,8 +9,9 @@ import { useToast } from '../components/Toast';
 import { Button, cx, EASE, Select, Spinner } from '../components/ui';
 import { PageHeader } from './AppShell';
 import { BoardLanes } from './BoardPage';
-import { useHistory, useNotifications, useTransition, useWorkspace } from './data';
+import { useBoard, useHistory, useNotifications, useTransition, useWorkspace } from './data';
 import { FilterBar, isFiltered, toApiFilters, useFilterParams } from './TaskFilters';
+import { RecallModal } from './RecallModal';
 import { TaskDrawer } from './TaskDrawer';
 
 /**
@@ -48,6 +49,8 @@ export default function WaitingPage() {
   const history = useHistory(toApiFilters(state, false), !!ws.data);
   const news = useNotifications().data?.tasks ?? {};
   const transition = useTransition();
+  const [recalling, setRecalling] = useState<Task | null>(null);
+  const todayStart = useBoard().data?.day.start ?? null;
   const toast = useToast();
   const openTaskId = params.get('task');
   const openTask = (id: string | null, intent?: string) => {
@@ -197,6 +200,7 @@ export default function WaitingPage() {
             busyId={transition.isPending ? (transition.variables?.id ?? null) : null}
             emptyOpenHint={isFiltered(state) ? 'Nothing matches here' : 'Nothing left open'}
             dayOf={single ? undefined : (t) => dayFmt.format(new Date(t.createdAt))}
+            recall={todayStart ? { dayStart: todayStart, onRecall: setRecalling } : undefined}
           />
           {(history.data?.total ?? 0) === 0 && isFiltered(state) && (
             <div className="-mt-4 px-4 pb-10 text-center sm:px-8">
@@ -208,6 +212,7 @@ export default function WaitingPage() {
         </div>
       )}
 
+      <RecallModal task={recalling} ws={ws.data} onClose={() => setRecalling(null)} />
       <TaskDrawer taskId={openTaskId} intent={params.get('intent')} onClose={() => openTask(null)} ws={ws.data} />
     </div>
   );

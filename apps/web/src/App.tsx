@@ -16,6 +16,7 @@ const AppShell = lazy(() => import('./app/AppShell'));
 const BoardPage = lazy(() => import('./app/BoardPage'));
 const HeartbeatPage = lazy(() => import('./app/HeartbeatPage'));
 const WaitingPage = lazy(() => import('./app/WaitingPage'));
+const RecallPage = lazy(() => import('./app/RecallPage'));
 const AuditsPage = lazy(() => import('./app/AuditsPage'));
 const InsightsPage = lazy(() => import('./app/InsightsPage'));
 const PlaybooksPage = lazy(() => import('./app/PlaybooksPage'));
@@ -68,6 +69,7 @@ export function App() {
         >
           <Route index element={<BoardPage />} />
           <Route path="waiting" element={<WaitingPage />} />
+          <Route path="recall" element={<RecallPage />} />
           <Route path="history" element={<Navigate to="/app/waiting" replace />} />
           <Route path="audits" element={<AuditsPage />} />
           <Route path="activity" element={<HeartbeatPage />} />
