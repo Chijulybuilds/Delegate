@@ -247,6 +247,15 @@ export function useRecall() {
   });
 }
 
+/** Hand an unfinished task to someone else (it keeps its day). */
+export function useReassign() {
+  const invalidate = useInvalidateWork();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; assigneeId: string; note?: string }) => api.post<{ task: Task }>(`/tasks/${id}/reassign`, body),
+    onSuccess: (r) => invalidate(r.task.id),
+  });
+}
+
 /** Recall several earlier tasks at once (the Recall page). */
 export function useRecallMany() {
   const invalidate = useInvalidateWork();

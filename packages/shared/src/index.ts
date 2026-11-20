@@ -99,6 +99,21 @@ export function canRecall(
   return task.assigneeId === viewer.userId && (task.status === 'open' || task.status === 'in_progress' || task.status === 'blocked');
 }
 
+/**
+ * Reassign: hand a task that isn't finished yet to someone else. It stays on its day (unlike Recall,
+ * which brings a copy to today). Executed work waits for its audit and audited work is sealed, so
+ * those don't change hands; a task already recalled lives on as its copy. The owner can reassign any
+ * task; a manager the ones they handed out.
+ */
+export function canReassign(
+  viewer: { userId: string; role: MemberRole },
+  task: { assigneeId: string; createdById: string; waitingOnId: string | null; status: TaskStatus; recalledToId?: string | null },
+): boolean {
+  if (!isManagerRole(viewer.role) || task.recalledToId) return false;
+  if (task.status !== 'open' && task.status !== 'in_progress' && task.status !== 'blocked') return false;
+  return viewer.role === 'owner' || task.createdById === viewer.userId;
+}
+
 /** The workspace as a member sees it: only the owner gets the invite code (only they bring people in). */
 export function orgForRole<T extends { inviteCode: string }>(org: T, role: MemberRole | null | undefined): T {
   return role === 'owner' ? org : { ...org, inviteCode: '' };
@@ -584,7 +599,7 @@ export interface IntegrationsOverview {
 /* In-app notifications                                                 */
 /* ------------------------------------------------------------------ */
 
-export type NotificationType = 'assigned' | 'blocked_on_you' | 'awaiting_audit' | 'approved' | 'changes_requested' | 'commented' | 'escalated' | 'overdue' | 'auto_proof' | 'billing';
+export type NotificationType = 'assigned' | 'reassigned_away' | 'blocked_on_you' | 'awaiting_audit' | 'approved' | 'changes_requested' | 'commented' | 'escalated' | 'overdue' | 'auto_proof' | 'billing';
 
 /** GET /api/notifications */
 export interface NotificationsResponse {

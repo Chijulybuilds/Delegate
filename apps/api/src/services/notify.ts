@@ -19,6 +19,7 @@ import { ChannelError, SlackApi, TeamsApi, WhatsAppApi, WHATSAPP_TEMPLATES, type
 /** Something happened that people should hear about. Emitted by the services, fanned out here. */
 export type DomainEvent =
   | { type: 'assigned'; org: Organization; task: Task; actorId: string | null }
+  | { type: 'reassigned'; org: Organization; task: Task; actorId: string; fromId: string }
   | { type: 'blocked'; org: Organization; task: Task; actorId: string | null }
   | { type: 'submitted'; org: Organization; task: Task; actorId: string | null; aiVerdict: AiVerdict | null; source?: string }
   | { type: 'approved'; org: Organization; task: Task; actorId: string }
@@ -28,7 +29,8 @@ export type DomainEvent =
   | { type: 'overdue'; org: Organization; task: Task; hours: number };
 
 interface Plan {
-  inApp: Array<{ userId: string; type: NotificationType; title: string; body: string }>;
+  /** taskId defaults to the event's task; null makes it a general notification (for someone who can't see the task). */
+  inApp: Array<{ userId: string; type: NotificationType; title: string; body: string; taskId?: string | null }>;
   channel: { event: ChannelEvent; msg: ChannelMessage } | null;
   whatsapp: Array<{ userId: string; template: string; params: string[]; summary: string; buttons?: string[] }>;
 }
@@ -73,7 +75,7 @@ export class Notifier {
       const plan = this.plan(evt, members);
       await Promise.allSettled([
         plan.inApp.length
-          ? this.store.insertNotifications(plan.inApp.map((n) => ({ ...n, orgId: evt.org.id, taskId: evt.task.id })))
+          ? this.store.insertNotifications(plan.inApp.map((n) => ({ ...n, orgId: evt.org.id, taskId: n.taskId === undefined ? evt.task.id : n.taskId })))
           : Promise.resolve(),
         plan.channel ? this.postToChannels(evt.org, plan.channel.event, plan.channel.msg) : Promise.resolve(),
         plan.whatsapp.length ? this.sendWhatsApp(evt.org, plan.whatsapp) : Promise.resolve(),
@@ -118,6 +120,34 @@ export class Notifier {
         out.channel = {
           event: 'assigned',
           msg: { title: `${name(evt.actorId)} assigned ${ref} to ${name(task.assigneeId)}`, body: task.title, status: 'open', url, facts: due ? [['Due', due]] : [] },
+        };
+        break;
+      }
+      case 'reassigned': {
+        // The new person gets it like any assignment…
+        if (task.assigneeId !== evt.actorId) {
+          out.inApp.push({ userId: task.assigneeId, type: 'assigned', title: `${ref} reassigned to you`, body: `${task.title} — from ${name(evt.actorId)}` });
+          out.whatsapp.push({
+            userId: task.assigneeId,
+            template: WHATSAPP_TEMPLATES.assigned,
+            params: [ref, task.title, name(evt.actorId), due ?? 'no due date'],
+            summary: `Reassigned ${ref}`,
+            buttons: [`start ${ref}`],
+          });
+        }
+        // …and the previous one knows to stop (they may no longer be able to open it).
+        if (evt.fromId !== evt.actorId && byId.has(evt.fromId)) {
+          out.inApp.push({
+            userId: evt.fromId,
+            type: 'reassigned_away',
+            title: `${ref} was moved to ${first(task.assigneeId)}`,
+            body: `${task.title} — ${name(evt.actorId)} reassigned it, so it’s off your list.`,
+            taskId: sees(evt.fromId) ? task.id : null,
+          });
+        }
+        out.channel = {
+          event: 'assigned',
+          msg: { title: `${name(evt.actorId)} reassigned ${ref} from ${name(evt.fromId)} to ${name(task.assigneeId)}`, body: task.title, status: task.status, url, facts: due ? [['Due', due]] : [] },
         };
         break;
       }

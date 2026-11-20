@@ -139,6 +139,12 @@ export function workspaceRoutes(deps: {
     res.status(201).json(await workspace.recall(ctxOf(req), String(req.params.id), body));
   });
 
+  /** Reassign: an unfinished task changes hands (it keeps its day). */
+  r.post('/tasks/:id/reassign', async (req, res) => {
+    const body = z.object({ assigneeId: z.string().min(1).max(64), note: z.string().trim().max(2000).optional() }).parse(req.body ?? {});
+    res.json({ task: await workspace.reassign(ctxOf(req), String(req.params.id), { assigneeId: body.assigneeId, ...(body.note ? { note: body.note } : {}) }) });
+  });
+
   r.post('/recall', async (req, res) => {
     const { taskIds } = z.object({ taskIds: z.array(z.string().min(1).max(64)).min(1).max(100) }).parse(req.body);
     res.json(await workspace.recallMany(ctxOf(req), taskIds));

@@ -11,6 +11,7 @@ import { PageHeader } from './AppShell';
 import { BoardLanes } from './BoardPage';
 import { useBoard, useHistory, useNotifications, useTransition, useWorkspace } from './data';
 import { FilterBar, isFiltered, toApiFilters, useFilterParams } from './TaskFilters';
+import { ReassignModal } from './ReassignModal';
 import { RecallModal } from './RecallModal';
 import { TaskDrawer } from './TaskDrawer';
 
@@ -50,6 +51,7 @@ export default function WaitingPage() {
   const news = useNotifications().data?.tasks ?? {};
   const transition = useTransition();
   const [recalling, setRecalling] = useState<Task | null>(null);
+  const [reassigning, setReassigning] = useState<Task | null>(null);
   const todayStart = useBoard().data?.day.start ?? null;
   const toast = useToast();
   const openTaskId = params.get('task');
@@ -201,6 +203,7 @@ export default function WaitingPage() {
             emptyOpenHint={isFiltered(state) ? 'Nothing matches here' : 'Nothing left open'}
             dayOf={single ? undefined : (t) => dayFmt.format(new Date(t.createdAt))}
             recall={todayStart ? { dayStart: todayStart, onRecall: setRecalling } : undefined}
+            onReassign={isOwner ? setReassigning : undefined}
           />
           {(history.data?.total ?? 0) === 0 && isFiltered(state) && (
             <div className="-mt-4 px-4 pb-10 text-center sm:px-8">
@@ -213,6 +216,7 @@ export default function WaitingPage() {
       )}
 
       <RecallModal task={recalling} ws={ws.data} onClose={() => setRecalling(null)} />
+      <ReassignModal task={reassigning} ws={ws.data} onClose={() => setReassigning(null)} />
       <TaskDrawer taskId={openTaskId} intent={params.get('intent')} onClose={() => openTask(null)} ws={ws.data} />
     </div>
   );

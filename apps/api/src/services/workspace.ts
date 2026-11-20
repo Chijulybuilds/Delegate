@@ -437,7 +437,54 @@ export class WorkspaceService {
     return candidate.getTime() > Date.now() + 15 * 60_000 ? candidate.toISOString() : null;
   }
 
+  /**
+   * Reassign: the task changes hands and keeps its day. The new person starts it themselves (a task
+   * already in motion goes back to Open), and a blocker that was waiting on them is cleared. The
+   * previous assignee is told; the new one gets it like a fresh assignment. A note becomes a message.
+   */
+  async reassign(ctx: Ctx, id: string, input: { assigneeId: string; note?: string }): Promise<Task> {
+    const task = await this.getTaskForCtx(ctx, id);
+    if (!isManagerRole(ctx.role)) throw forbidden('Only managers can reassign tasks');
+    if (ctx.role !== 'owner' && task.createdById !== ctx.userId) throw forbidden('Only the owner or whoever handed this task out can reassign it');
+    if (task.recalledToId) {
+      const copy = await this.store.getTask(task.recalledToId);
+      throw conflict(`This task was recalled${copy ? ` as ${taskRef(copy.seq)}` : ''}. Reassign that one instead.`);
+    }
+    if (task.status === 'done') throw conflict('This task is executed and waiting for its audit, so it can’t change hands. Approve it or request changes first.');
+    if (task.status === 'approved') throw conflict('Audited tasks are locked. Recall it to give it to someone new.');
+    if (input.assigneeId === task.assigneeId) throw badRequest('It’s already with them');
+    const members = await this.store.listMembers(ctx.orgId);
+    const to = members.find((m) => m.userId === input.assigneeId);
+    if (!to) throw badRequest('Assignee must be a member of this workspace');
+
+    const next: Partial<Task> = { assigneeId: to.userId, overdueAlertedAt: null };
+    if (task.status === 'in_progress') Object.assign(next, { status: 'open', startedAt: null });
+    if (task.status === 'blocked' && task.waitingOnId === to.userId) {
+      // A task can't wait on its own assignee: the blocker goes with the hand-over.
+      Object.assign(next, { status: 'open', startedAt: null, blockedReason: null, waitingOnId: null, blockedAt: null, escalationLevel: 0 });
+    }
+    const updated = await this.store.updateTask(id, next);
+    // Names travel with the event, so it still reads right after someone leaves.
+    const fromName = members.find((m) => m.userId === task.assigneeId)?.fullName ?? 'a former member';
+    await this.log(
+      ctx.orgId,
+      ctx.userId,
+      'task.updated',
+      updated,
+      { fields: ['assigneeId'], reason: 'reassigned', reassigned: { from: task.assigneeId, to: to.userId }, name: fromName, toName: to.fullName },
+      task.status,
+      updated.status,
+    );
+    await this.emit({ type: 'reassigned', task: updated, actorId: ctx.userId, fromId: task.assigneeId });
+    if (input.note) await this.comment(ctx, id, input.note);
+    return updated;
+  }
+
   async updateTask(ctx: Ctx, id: string, patch: Partial<CreateTaskInput>): Promise<Task> {
+    // A new assignee goes through Reassign, so it behaves the same from everywhere.
+    const { assigneeId, ...rest } = patch;
+    if (assigneeId !== undefined && assigneeId !== (await this.getTaskForCtx(ctx, id)).assigneeId) await this.reassign(ctx, id, { assigneeId });
+    patch = rest;
     const task = await this.getTaskForCtx(ctx, id);
     if (!isManagerRole(ctx.role) && task.createdById !== ctx.userId) throw forbidden('Only managers or the task creator can edit this task');
     if (task.status === 'approved') throw conflict('Audited tasks are locked');
@@ -453,17 +500,10 @@ export class WorkspaceService {
       if (patch.departmentId) await this.assertDepartment(ctx.orgId, patch.departmentId);
       next.departmentId = patch.departmentId;
     }
-    if (patch.assigneeId !== undefined && patch.assigneeId !== task.assigneeId) {
-      if (!isManagerRole(ctx.role)) throw forbidden('Only managers can reassign tasks');
-      const members = await this.store.listMembers(ctx.orgId);
-      if (!members.some((m) => m.userId === patch.assigneeId)) throw badRequest('Assignee must be a member of this workspace');
-      next.assigneeId = patch.assigneeId;
-    }
     const changed = Object.keys(next).filter((k) => k !== 'overdueAlertedAt' && next[k as keyof Task] !== task[k as keyof Task]);
     if (changed.length === 0) return task;
     const updated = await this.store.updateTask(id, next);
     await this.log(ctx.orgId, ctx.userId, 'task.updated', updated, { fields: changed });
-    if (next.assigneeId) await this.emit({ type: 'assigned', task: updated, actorId: ctx.userId });
     return updated;
   }
 
