@@ -181,7 +181,7 @@ export default function BoardPage() {
               )}
               data-testid={`glance-${g.id}`}
             >
-              <span className={cx('text-[0.8438rem]', on ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
+              <span className={cx('text-[1.0625rem] font-medium tracking-[-0.01em]', on ? 'text-milk/85' : 'text-ink-2')}>{g.label}</span>
               <span
                 className={cx(
                   'grid h-9 min-w-9 place-items-center rounded-xl px-2 tabular-nums shadow-[var(--shadow-chip)] ring-1 ring-black/[0.04] transition-colors',
