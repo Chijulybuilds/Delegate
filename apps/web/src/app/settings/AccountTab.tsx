@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useIntegrations, type WorkspaceData } from '../data';
 import { DangerZone } from './LeaveOrDelete';
+import { PasswordCard } from './PasswordCard';
 
 export function AccountTab({ ws }: { ws: WorkspaceData }) {
   const { me, signOut, config } = useAuth();
@@ -95,6 +96,8 @@ export function AccountTab({ ws }: { ws: WorkspaceData }) {
           </>
         )}
       </Card>
+
+      <PasswordCard />
 
       <DangerZone members={ws.members} orgName={ws.org.name} />
     </div>

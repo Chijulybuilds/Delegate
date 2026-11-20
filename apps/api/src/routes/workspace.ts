@@ -131,6 +131,25 @@ export function workspaceRoutes(deps: {
     res.json(await workspace.transition(ctxOf(req), String(req.params.id), action as TransitionAction, input));
   });
 
+  /** Recall: bring an earlier task back onto today's board (as a new, linked task). */
+  r.post('/tasks/:id/recall', async (req, res) => {
+    const body = z
+      .object({ assigneeId: z.string().max(64).optional(), dueAt: isoDate.nullable().optional(), note: z.string().trim().max(2000).optional() })
+      .parse(req.body ?? {});
+    res.status(201).json(await workspace.recall(ctxOf(req), String(req.params.id), body));
+  });
+
+  /** Reassign: an unfinished task changes hands (it keeps its day). */
+  r.post('/tasks/:id/reassign', async (req, res) => {
+    const body = z.object({ assigneeId: z.string().min(1).max(64), note: z.string().trim().max(2000).optional() }).parse(req.body ?? {});
+    res.json({ task: await workspace.reassign(ctxOf(req), String(req.params.id), { assigneeId: body.assigneeId, ...(body.note ? { note: body.note } : {}) }) });
+  });
+
+  r.post('/recall', async (req, res) => {
+    const { taskIds } = z.object({ taskIds: z.array(z.string().min(1).max(64)).min(1).max(100) }).parse(req.body);
+    res.json(await workspace.recallMany(ctxOf(req), taskIds));
+  });
+
   r.post('/tasks/:id/comments', async (req, res) => {
     const body = z.object({ body: z.string().trim().min(1, 'Write something first').max(2000) }).parse(req.body);
     res.status(201).json({ comment: await workspace.comment(ctxOf(req), String(req.params.id), body.body) });
@@ -208,7 +227,8 @@ export function workspaceRoutes(deps: {
   r.get('/history', async (req, res) => {
     const { page, pageSize, ...f } = auditFilters
       .extend({
-        status: z.enum(['open', 'active', 'done', 'approved']).optional(),
+        status: z.enum(['open', 'active', 'done', 'approved', 'unfinished']).optional(),
+        recallable: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
         fromTime: hhmm.optional(),
         toTime: hhmm.optional(),
         page: z.coerce.number().int().min(1).max(10_000).default(1),

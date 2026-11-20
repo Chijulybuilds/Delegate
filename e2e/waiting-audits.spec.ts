@@ -6,12 +6,20 @@ test.describe('History and Audits', () => {
     await resetDemo(request);
   });
 
-  test('earlier days are the owner’s History, laid out like Today, by day and time of day', async ({ page }) => {
-    // Staff don't get earlier days at all.
+  test('History: everyone sees their own earlier days (the owner sees all), laid out like Today, by day and time', async ({ page }) => {
+    // Staff have a History too: only their own tasks from earlier days, with the same filters.
     await loginAs(page, 'demo-tunde');
-    await expect(page.getByTestId('nav-waiting')).toHaveCount(0);
-    await page.goto('/app/history'); // old links lead to the new page, which sends staff back
-    await expect(page).toHaveURL(/\/app$/);
+    await expect(page.getByTestId('earlier-days')).toContainText('unfinished'); // their own leftovers
+    await page.getByTestId('nav-waiting').click();
+    await expect(page).toHaveURL(/\/app\/waiting/);
+    await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
+    await expect(page.getByTestId('task-card').first()).toBeVisible();
+    await expect(page.getByTestId('task-card').filter({ hasNotText: 'Tunde' })).toHaveCount(0);
+    await expect(page.getByTestId('waiting-filters-person')).toHaveCount(0); // no "everyone" filter for staff
+    await page.getByTestId('waiting-filters-search').fill('SSO');
+    await expect(page.getByTestId('task-card')).toHaveCount(1);
+    await page.goto('/app/history'); // old links still work
+    await expect(page).toHaveURL(/\/app\/waiting/);
 
     await loginAs(page, 'demo-ada');
     await expect(page.getByTestId('earlier-days')).toContainText('unfinished');

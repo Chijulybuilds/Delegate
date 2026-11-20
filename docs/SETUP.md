@@ -74,11 +74,12 @@ Demo data lives in memory and resets when the API restarts.
 ## 2. Supabase (database, sign-in, storage)
 
 1. Go to [supabase.com](https://supabase.com) → **New project**. Pick the region closest to your users (e.g. *West EU (Ireland)* or *Frankfurt* for Nigeria). Save the database password somewhere safe.
-2. Open **SQL Editor → New query** and run the four migrations **in order**. Paste each file and press **Run**:
+2. Open **SQL Editor → New query** and run the five migrations **in order**. Paste each file and press **Run**:
    1. [`supabase/migrations/20261112000000_init.sql`](../supabase/migrations/20261112000000_init.sql): workspaces, tasks, the append-only ledger, Row Level Security, the `proofs` storage bucket, and Realtime.
    2. [`supabase/migrations/20261113000000_saas.sql`](../supabase/migrations/20261113000000_saas.sql): task numbers (`DLG-12`), subscriptions, integrations, notifications, playbooks, escalation fields and the webhook de-duplication table.
    3. [`supabase/migrations/20261114000000_accounts.sql`](../supabase/migrations/20261114000000_accounts.sql): **Leave workspace / Delete account** (erases a deleted person's name from the history) and a security fix that stops browsers from calling the workspace-delete function.
    4. [`supabase/migrations/20261119000000_private_tasks.sql`](../supabase/migrations/20261119000000_private_tasks.sql): **private tasks and owner-only invite codes**. The owner sees every task; everyone else only the tasks given to them, the ones they handed out, and a task that's blocked waiting on them. Only the owner can see or renew the invite code. Enforced in the database too, so nobody can read around the app. (If you ran an earlier copy of this file, run it again: it's safe.)
+   5. [`supabase/migrations/20261120000000_recall.sql`](../supabase/migrations/20261120000000_recall.sql): **Recall**, which brings a task from an earlier day back onto today's board (two link columns on tasks).
 
    *(With the Supabase CLI instead: `supabase link --project-ref <ref>` then `supabase db push`.)*
 3. Open **Project Settings → API Keys** and copy:
@@ -137,6 +138,8 @@ People can sign up and log in with an email and password as well as with Google.
      1. On the Google account that will send the emails, turn on **2-Step Verification**, then create an **App password** at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
      2. In Supabase → **SMTP Settings**: Sender email = that Gmail address, Sender name = `Delegate`, Host = `smtp.gmail.com`, Port = `465`, Username = the Gmail address, Password = the 16-letter app password.
    - Then, under **Authentication → Rate Limits**, raise *emails sent per hour* (e.g. to 100).
+
+- **Google sign-ups can add a password later** (Settings → Account → Password). Then they can log in either way. If **Secure password change** is on (Authentication → Sign In / Providers → Email) and their session is older than a day, Supabase emails a code first; the **Reauthentication** template (Authentication → Emails → Templates) must contain `{{ .Token }}`, which it does by default. Subject suggestion: `Your Delegate confirmation code`.
 
 Flow:
 - **Sign up:** name, email, password → **Enter your code** (6 boxes; paste works, and phones offer the code from Mail) → signed in → onboarding. *Send a new code* unlocks after 60 seconds, the minimum Supabase allows.
@@ -261,7 +264,7 @@ Delegate tells you why on the sign-in page itself, in a red box. The usual cause
 |---|---|
 | *…the package "…" isn't installed* | You pulled new code. Run `npm install`, then `npm run dev` again. (`npm run dev` also checks this before starting.) |
 | *The Delegate API isn't responding* | The API part of `npm run dev` stopped. Look in that terminal for a red `[api]` line. After pulling new code, `npm install` is usually the fix. |
-| *…missing the latest migration* | In Supabase → SQL Editor, run the file the message names (`20261113000000_saas.sql`, `20261114000000_accounts.sql` or `20261119000000_private_tasks.sql`, oldest first). Refresh the page; no restart needed. |
+| *…missing the latest migration* | In Supabase → SQL Editor, run the file the message names (`20261113000000_saas.sql`, `20261114000000_accounts.sql`, `20261119000000_private_tasks.sql` or `20261120000000_recall.sql`, oldest first). Refresh the page; no restart needed. |
 | *Database update needed … private_tasks.sql* | In Supabase → SQL Editor, run `supabase/migrations/20261119000000_private_tasks.sql`. Refresh the page. |
 | *Security update needed* | In Supabase → SQL Editor, run `supabase/migrations/20261114000000_accounts.sql`. Refresh the page. |
 | *…the database is empty* | Run every file in `supabase/migrations`, oldest first. |

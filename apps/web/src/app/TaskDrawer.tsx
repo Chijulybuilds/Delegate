@@ -1,5 +1,6 @@
-import { availableActions, isManagerRole, taskRef, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
-import { Download, FileText, HardDrive, Link2, Paperclip, Send, ShieldCheck, Sparkles, StickyNote, X } from 'lucide-react';
+import { availableActions, canReassign, canRecall, isManagerRole, taskRef, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
+import { ArrowRight, ArrowRightLeft, Download, FileText, HardDrive, Link2, Paperclip, RotateCcw, Send, ShieldCheck, Sparkles, StickyNote, X } from 'lucide-react';
+import { useSearchParams } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
@@ -9,7 +10,9 @@ import { pickDriveFile } from '../lib/google';
 import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { clock, dueLabel, timeAgo, toLocalInput } from '../lib/format';
-import { memberName, useComment, useMarkTaskRead, useNotifications, useTaskDetail, useTransition, useUpdateTask, type WorkspaceData } from './data';
+import { memberName, useBoard, useComment, useMarkTaskRead, useNotifications, useTaskDetail, useTransition, useUpdateTask, type WorkspaceData } from './data';
+import { ReassignModal } from './ReassignModal';
+import { RecallModal } from './RecallModal';
 import { memberOptions, priorityOptions } from './options';
 
 export function TaskDrawer({ taskId, intent, onClose, ws }: { taskId: string | null; intent: string | null; onClose: () => void; ws: WorkspaceData }) {
@@ -30,6 +33,17 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
   // arrives while it's open).
   const news = useNotifications().data?.tasks[taskId]?.count ?? 0;
   const markRead = useMarkTaskRead();
+  const dayStart = useBoard().data?.day.start ?? null;
+  const [recalling, setRecalling] = useState(false);
+  const [reassigning, setReassigning] = useState(false);
+  const [, setParams] = useSearchParams();
+  /** Opens another task in this panel (the original of a recall, or its copy). */
+  const openOther = (id: string) => {
+    const next = new URLSearchParams(window.location.search);
+    next.set('task', id);
+    next.delete('intent');
+    setParams(next, { replace: true });
+  };
   useEffect(() => {
     if (news > 0 && !markRead.isPending) markRead.mutate(taskId);
   }, [news, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -54,7 +68,10 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
 
   const { task, proofs, comments, events } = data;
   const actions = availableActions(task, { userId: ws.me.userId, role: ws.me.role });
+  // Tasks from earlier days can be brought back to today (see RecallModal).
+  const recallable = !!dayStart && canRecall({ userId: ws.me.userId, role: ws.me.role }, task, dayStart);
   const isManager = isManagerRole(ws.me.role);
+  const reassignable = canReassign({ userId: ws.me.userId, role: ws.me.role }, task);
   const canEdit = (isManager || task.createdById === ws.me.userId) && task.status !== 'approved';
   const due = dueLabel(task.dueAt);
   const dept = ws.departments.find((d) => d.id === task.departmentId);
@@ -106,8 +123,24 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
           </h2>
           {task.description && <p className="mt-3 whitespace-pre-wrap text-[0.9375rem] leading-relaxed text-ink-2">{task.description}</p>}
 
+          {/* Recall: where this task came from, or where it went */}
+          {(task.recalledFromId || task.recalledToId) && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {task.recalledFromId && (
+                <button onClick={() => openOther(task.recalledFromId!)} className="inline-flex items-center gap-1.5 rounded-full bg-s-approved-soft px-3 py-1 text-xs font-medium text-s-approved-ink hover:brightness-95" data-testid="recalled-from">
+                  <RotateCcw className="size-3.5" /> Recalled from an earlier day · open the original <ArrowRight className="size-3.5" />
+                </button>
+              )}
+              {task.recalledToId && (
+                <button onClick={() => openOther(task.recalledToId!)} className="inline-flex items-center gap-1.5 rounded-full bg-s-approved-soft px-3 py-1 text-xs font-medium text-s-approved-ink hover:brightness-95" data-testid="recalled-to">
+                  <RotateCcw className="size-3.5" /> Recalled to a later day · open it <ArrowRight className="size-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Action bar */}
-          {actions.length > 0 && (
+          {(actions.length > 0 || recallable) && (
             <div className="mt-5 flex flex-wrap gap-2" data-testid="drawer-actions">
               {actions.map((a) => (
                 <Button
@@ -122,8 +155,15 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
                   {a === 'approve' ? 'Approve ✓' : TRANSITIONS[a].label}
                 </Button>
               ))}
+              {recallable && (
+                <Button variant="outline" onClick={() => setRecalling(true)} data-testid="action-recall">
+                  <RotateCcw className="size-4" /> Recall to today
+                </Button>
+              )}
             </div>
           )}
+          <RecallModal task={recalling ? task : null} ws={ws} onClose={() => setRecalling(false)} onDone={(t) => openOther(t.id)} />
+          <ReassignModal task={reassigning ? task : null} ws={ws} onClose={() => setReassigning(false)} />
 
           {task.status === 'blocked' && (
             <div className="mt-5 rounded-2xl border border-s-active/40 bg-s-active-soft px-4 py-3 text-sm text-s-active-ink">
@@ -135,14 +175,15 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
           {/* Meta grid */}
           <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line bg-line text-sm">
             <Meta label="Assignee">
-              {canEdit && isManager ? (
-                <Select size="inline" value={task.assigneeId} onChange={(v) => edit({ assigneeId: v })} options={memberOptions(ws.members, { departments: ws.departments })} aria-label="Assignee" className="max-w-full" />
-              ) : (
-                <span className="flex items-center gap-2 font-medium">
-                  <Avatar name={memberName(ws.members, task.assigneeId)} size={20} />
-                  {memberName(ws.members, task.assigneeId)}
-                </span>
-              )}
+              <span className="flex min-w-0 items-center gap-2 font-medium">
+                <Avatar name={memberName(ws.members, task.assigneeId)} size={20} />
+                <span className="truncate">{memberName(ws.members, task.assigneeId)}</span>
+                {reassignable && (
+                  <button onClick={() => setReassigning(true)} className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-mute transition-colors hover:bg-ink/[0.06] hover:text-ink" data-testid="action-reassign">
+                    <ArrowRightLeft className="size-3.5" /> Reassign
+                  </button>
+                )}
+              </span>
             </Meta>
             <Meta label="Assigned by">{memberName(ws.members, task.createdById)}</Meta>
             <Meta label="Priority">
@@ -570,7 +611,10 @@ export function describeEvent(e: LedgerEvent, ws: WorkspaceData, withTitle = fal
   const title = withTitle && typeof e.meta.title === 'string' ? ` “${e.meta.title}”` : '';
   switch (e.type) {
     case 'task.created':
+      if (e.meta.recalledFrom) return `${who} recalled${title} to today for ${memberName(ws.members, e.meta.assigneeId as string)}`;
       return `${who} assigned${title} to ${memberName(ws.members, e.meta.assigneeId as string)}${via}`;
+    case 'task.recalled':
+      return `${who} recalled${title} to a later day as ${e.meta.toRef}`;
     case 'task.started':
       return `${who} started${title}${via}`;
     case 'task.blocked':
@@ -588,6 +632,7 @@ export function describeEvent(e: LedgerEvent, ws: WorkspaceData, withTitle = fal
     case 'task.updated':
       if (e.meta.reason === 'member_left') return `${who} left — handed${title || ' a task'} to ${e.meta.toName}`;
       if (e.meta.reason === 'member_removed') return `${who} took over${title || ' a task'} from ${e.meta.name}, who was removed`;
+      if (e.meta.reason === 'reassigned') return `${who} reassigned${title || ' this task'} from ${e.meta.name} to ${e.meta.toName}`;
       return `${who} edited${title} (${((e.meta.fields as string[]) ?? []).join(', ')})`;
     case 'task.escalated':
       return `Escalated${title} to ${e.meta.level === 2 ? 'the owner' : 'managers'} — blocked ${e.meta.hours}h`;

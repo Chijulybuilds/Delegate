@@ -147,14 +147,19 @@ describe('every day starts with an empty board; earlier days wait on the owner',
     expect(staffBoard.tasks.map((t: Task) => t.id)).not.toContain(old.id);
     expect(staffBoard.tasks.every((t: Task) => t.createdAt >= staffBoard.day.start)).toBe(true);
     expect(staffBoard.day.timezone).toBe('Africa/Lagos');
-    expect(staffBoard.earlier).toEqual({ unfinished: 0, awaitingAudit: 0 }); // earlier days are the owner's
+    expect(staffBoard.earlier.unfinished).toBeGreaterThanOrEqual(1); // their own unfinished work from earlier days
+    expect(staffBoard.earlier.awaitingAudit).toBe(0); // staff don't audit
 
     const ownerBoard = (await request(app).get('/api/tasks').set(auth(ada)).expect(200)).body;
     expect(ownerBoard.earlier.unfinished).toBeGreaterThanOrEqual(1);
 
-    // Only the owner can look back.
-    await request(app).get('/api/history').set(auth(tunde)).expect(403);
-    await request(app).get('/api/history').set(auth(await login('demo-kemi'))).expect(403);
+    // Everyone looks back at their own work; only the owner sees everyone's.
+    const mine = (await request(app).get('/api/history').set(auth(tunde)).expect(200)).body as { rows: Array<{ task: Task }> };
+    expect(mine.rows.map((r) => r.task.id)).toContain(old.id);
+    expect(mine.rows.every((r) => r.task.assigneeId === 'demo-tunde' || r.task.createdById === 'demo-tunde' || r.task.waitingOnId === 'demo-tunde')).toBe(true);
+    const maya = (await request(app).get('/api/history').set(auth(await login('demo-maya'))).expect(200)).body as { rows: Array<{ task: Task }> };
+    expect(maya.rows.some((r) => r.task.id === old.id)).toBe(false);
+    expect(maya.rows.length).toBeGreaterThan(0);
 
     const history = async (query: Record<string, string> = {}) =>
       ((await request(app).get('/api/history').query(query).set(auth(ada)).expect(200)).body as { rows: Array<{ task: Task }>; total: number }).rows.map((r) => r.task.id);

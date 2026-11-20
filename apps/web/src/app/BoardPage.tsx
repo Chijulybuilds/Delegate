@@ -1,5 +1,5 @@
-import { availableActions, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
-import { AlarmClock, ArrowRight, BellRing, CirclePlay, History, OctagonPause, Pause, Plus, RefreshCw, ShieldCheck, Sparkles, Users, type LucideIcon } from 'lucide-react';
+import { availableActions, canReassign, canRecall, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
+import { AlarmClock, ArrowRight, ArrowRightLeft, BellRing, CirclePlay, History, OctagonPause, Pause, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -11,6 +11,7 @@ import { PageHeader } from './AppShell';
 import { memberName, useBoard, useNotifications, useTransition, useWorkspace, type WorkspaceData } from './data';
 import { NewTaskModal } from './NewTaskModal';
 import { departmentOptions, memberOptions } from './options';
+import { ReassignModal } from './ReassignModal';
 import { TaskDrawer } from './TaskDrawer';
 
 const laneText: Record<string, string> = {
@@ -86,6 +87,7 @@ export default function BoardPage() {
   const [person, setPerson] = useState<string>('all');
   const [focus, setFocus] = useState<Focus | null>(null);
   const [creating, setCreating] = useState(false);
+  const [reassigning, setReassigning] = useState<Task | null>(null);
 
   const openTaskId = params.get('task');
   const openTask = (id: string | null, intent?: string) => {
@@ -181,7 +183,7 @@ export default function BoardPage() {
               )}
               data-testid={`glance-${g.id}`}
             >
-              <span className={cx('text-[0.8438rem]', on ? 'text-milk/80' : 'text-mute')}>{g.label}</span>
+              <span className={cx('text-[1.0625rem] font-medium tracking-[-0.01em]', on ? 'text-milk/85' : 'text-ink-2')}>{g.label}</span>
               <span
                 className={cx(
                   'grid h-9 min-w-9 place-items-center rounded-xl px-2 tabular-nums shadow-[var(--shadow-chip)] ring-1 ring-black/[0.04] transition-colors',
@@ -205,8 +207,8 @@ export default function BoardPage() {
         })}
       </div>
 
-      {/* Every day starts fresh: earlier work is available to the owner in History. */}
-      {isOwner && board.data && earlier > 0 && (
+      {/* Every day starts fresh: earlier work is on History (everyone sees their own). */}
+      {board.data && earlier > 0 && (
         <Link
           to="/app/waiting"
           className="group mx-4 mb-4 flex items-center gap-3 rounded-2xl border border-dashed border-line-2 px-4 py-2.5 text-sm text-ink-2 transition-colors hover:border-ink hover:text-ink sm:mx-8"
@@ -292,19 +294,21 @@ export default function BoardPage() {
         onQuick={quick}
         busyId={transition.isPending ? (transition.variables?.id ?? null) : null}
         emptyOpenHint={isManager && !focus ? 'No tasks yet today' : 'No tasks here yet'}
+        onReassign={isOwner ? setReassigning : undefined}
       />
 
       {(board.data?.tasks.length ?? 0) === 0 && (
         <div className="px-4 pb-10 sm:px-8">
           <EmptyState
             title="Your board is empty"
-            body={isOwner ? 'Every day starts with a fresh board; earlier tasks are in History. Assign the first task of the day: it lands red on the assignee’s board.' : 'Every day starts with a fresh board. Your tasks for today will appear here.'}
+            body={isOwner ? 'Every day starts with a fresh board; earlier tasks are in History. Assign the first task of the day: it lands red on the assignee’s board.' : 'Every day starts with a fresh board. Your tasks for today will appear here; earlier ones are in History.'}
             action={<Button onClick={() => setCreating(true)}>Create the first task</Button>}
           />
         </div>
       )}
 
       <NewTaskModal open={creating} onClose={() => setCreating(false)} ws={ws.data} />
+      <ReassignModal task={reassigning} ws={ws.data} onClose={() => setReassigning(null)} />
       <TaskDrawer taskId={openTaskId} intent={params.get('intent')} onClose={() => openTask(null)} ws={ws.data} />
     </div>
   );
@@ -322,6 +326,8 @@ export function BoardLanes({
   busyId,
   emptyOpenHint = 'No tasks here yet',
   dayOf,
+  recall,
+  onReassign,
 }: {
   tasks: Task[];
   ws: WorkspaceData;
@@ -334,8 +340,13 @@ export function BoardLanes({
   emptyOpenHint?: string;
   /** When the board spans several days, each card shows the day it was given out. */
   dayOf?: (task: Task) => string | null;
+  /** On History: cards that may be recalled get a "Recall to today" button. */
+  recall?: { dayStart: string; onRecall: (task: Task) => void };
+  /** The owner's boards: unfinished cards get a "Reassign" button. */
+  onReassign?: (task: Task) => void;
 }) {
   const isOwner = ws.me.role === 'owner';
+  const viewer = { userId: ws.me.userId, role: ws.me.role };
   return (
     <LayoutGroup>
       <div className="grid gap-3 px-4 pb-10 sm:px-8 md:grid-cols-2 xl:grid-cols-4">
@@ -366,6 +377,8 @@ export function BoardLanes({
                       verifiedBy={verified[t.id] ?? null}
                       news={news[t.id]?.count ?? 0}
                       day={dayOf?.(t) ?? null}
+                      onRecall={recall && canRecall(viewer, t, recall.dayStart) ? () => recall.onRecall(t) : undefined}
+                      onReassign={onReassign && canReassign(viewer, t) ? () => onReassign(t) : undefined}
                       onOpen={() => onOpen(t.id)}
                       onQuick={(a) => onQuick(t, a)}
                       busy={busyId === t.id}
@@ -399,6 +412,8 @@ function TaskCard({
   verifiedBy,
   news = 0,
   day = null,
+  onRecall,
+  onReassign,
   onOpen,
   onQuick,
   busy,
@@ -411,6 +426,10 @@ function TaskCard({
   news?: number;
   /** The day it was given out (shown when a board spans several days). */
   day?: string | null;
+  /** History: bring this task back to today. */
+  onRecall?: () => void;
+  /** Hand it to someone else (the owner's boards). */
+  onReassign?: () => void;
   onOpen: () => void;
   onQuick: (a: TransitionAction) => void;
   busy: boolean;
@@ -463,6 +482,15 @@ function TaskCard({
             {day}
           </span>
         )}
+        {(task.recalledFromId || task.recalledToId) && (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-s-approved-soft px-1.5 py-0.5 text-[0.625rem] font-medium text-s-approved-ink"
+            title={task.recalledFromId ? 'Recalled from an earlier day' : 'Recalled to a later day'}
+            data-testid={task.recalledFromId ? 'chip-recalled-from' : 'chip-recalled-to'}
+          >
+            <RotateCcw className="size-3" /> {task.recalledFromId ? 'Recalled' : 'Recalled on'}
+          </span>
+        )}
         {task.source !== 'app' && (
           <span className="rounded-full bg-milk px-1.5 py-0.5 text-[0.625rem] font-medium text-mute" title={`Created from ${SOURCE_LABEL[task.source]}`}>
             {SOURCE_LABEL[task.source]}
@@ -513,6 +541,41 @@ function TaskCard({
         </span>
       </div>
 
+      {(onReassign || onRecall) && (
+        // Secondary actions share one row; on their own, each spells itself out.
+        <div className={cx('mt-3 flex gap-2', !(primary && QUICK[primary]) && 'border-t border-line pt-3')}>
+          {onReassign && (
+            <Button
+              size="sm"
+              variant="soft"
+              className="h-8 min-w-0 flex-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReassign();
+              }}
+              title="Hand this task to someone else"
+              data-testid="quick-reassign"
+            >
+              <ArrowRightLeft className="size-3.5 shrink-0" /> Reassign
+            </Button>
+          )}
+          {onRecall && (
+            <Button
+              size="sm"
+              variant="soft"
+              className="h-8 min-w-0 flex-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRecall();
+              }}
+              title="Bring it back onto today’s board"
+              data-testid="quick-recall"
+            >
+              <RotateCcw className="size-3.5 shrink-0" /> {onReassign ? 'Recall' : 'Recall to today'}
+            </Button>
+          )}
+        </div>
+      )}
       {primary && QUICK[primary] && (
         <div className="mt-3 border-t border-line pt-3">
           <Button
