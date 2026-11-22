@@ -78,10 +78,13 @@ test.describe('Collaboration', () => {
     await page.getByTestId('block-reason').fill('Need the approved salary band before posting.');
     await choose(page, 'block-waiting-on', 'demo-kemi');
     await page.getByTestId('block-submit').click();
+    await expect(page.getByText('It’s in History → Blocked until it’s unblocked.')).toBeVisible();
     await expect(page.getByTestId('action-unblock')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(card(page, 'Write job post for ops associate')).toHaveCount(1);
-    await expect(card(page, 'Write job post for ops associate')).toHaveAttribute('data-status', 'blocked');
+    // Blocked work leaves the lanes: it waits on History → Blocked.
+    await expect(card(page, 'Write job post for ops associate')).toHaveCount(0);
+    await page.goto('/app/waiting?view=blocked');
+    await expect(page.getByTestId('lane-blocked').locator(card(page, 'Write job post for ops associate'))).toHaveAttribute('data-status', 'blocked');
 
     await loginAs(page, 'demo-kemi');
     const banner = page.getByTestId('blocker-banner');

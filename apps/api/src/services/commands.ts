@@ -1,4 +1,4 @@
-import { isManagerRole, STATUS_META, taskRef, type Member, type Task, type TaskPriority, type TransitionAction } from '@delegate/shared';
+import { isManagerRole, isSettledByRecall, STATUS_META, taskRef, type Member, type Task, type TaskPriority, type TransitionAction } from '@delegate/shared';
 import { HttpError } from '../lib/errors.js';
 import type { Store } from '../store/types.js';
 import { startOfDayInTz } from './metrics.js';
@@ -164,7 +164,7 @@ export class CommandService {
 
   private async list(env: CommandEnv) {
     const tasks = (await this.store.listTasks({ orgId: env.ctx.orgId, statuses: ['open', 'in_progress', 'blocked', 'done'] }))
-      .filter((t) => t.assigneeId === env.ctx.userId)
+      .filter((t) => t.assigneeId === env.ctx.userId && !isSettledByRecall(t))
       .sort((a, b) => a.seq - b.seq);
     if (!tasks.length) return 'Nothing on your plate. 🎉';
     return [`Your tasks (${tasks.length}):`, ...tasks.slice(0, 15).map((t) => `• ${taskRef(t.seq)} ${t.title} — ${STATUS_META[t.status].label}`), '', 'Reply e.g. "start DLG-12" or "done DLG-12 <link>".'].join('\n');

@@ -1,21 +1,28 @@
+import { ChevronDown, Scale } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
 import { ColumnChart, InlineBar, StatTile } from '../components/charts';
-import { Avatar, Card, cx, Segmented, Spinner } from '../components/ui';
-import { hours, pct } from '../lib/format';
+import { Avatar, Card, cx, EASE, Segmented, Spinner } from '../components/ui';
+import { pct } from '../lib/format';
 import { PageHeader } from './AppShell';
-import { useVelocity } from './data';
+import { useVelocity, useWorkspace } from './data';
+
+/** "≈ 18 h": typical hours of work for the sizes delivered. */
+const work = (h: number) => (h <= 0 ? '—' : `≈ ${h < 10 ? String(Math.round(h * 10) / 10) : Math.round(h)} h`);
+/** Below this many executed tasks a score is still settling (it starts near the team's). */
+const SETTLED = 3;
 
 export default function VelocityPage({ embedded = false }: { embedded?: boolean }) {
   const [days, setDays] = useState<'7' | '14' | '30'>('14');
   const { data, isLoading } = useVelocity(Number(days));
-
-  const maxHours = Math.max(1, ...(data?.rows.map((r) => r.avgHoursToGreen ?? 0) ?? [1]));
+  const ws = useWorkspace().data;
+  const [how, setHow] = useState(false);
 
   return (
     <div>
       {embedded ? (
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-4 sm:px-8">
-          <p className="text-sm text-mute">Time-to-impact: how fast work moves from red (assigned) to green (executed with proof).</p>
+          <p className="text-sm text-mute">How the team delivers: on time against each task’s own deadline and size, and right the first time.</p>
           <Segmented
             value={days}
             onChange={setDays}
@@ -29,7 +36,7 @@ export default function VelocityPage({ embedded = false }: { embedded?: boolean 
       ) : (
       <PageHeader
         title="Velocity Pulse"
-        subtitle="Time-to-impact: how fast work moves from red (assigned) to green (executed with proof)."
+        subtitle="How the team delivers: on time against each task’s own deadline and size, and right the first time."
         actions={
           <Segmented
             value={days}
@@ -49,10 +56,16 @@ export default function VelocityPage({ embedded = false }: { embedded?: boolean 
         </div>
       ) : (
         <div className="space-y-4 px-4 pb-12 sm:px-8">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          {ws?.me.role === 'owner' && ws.features?.taskSize === false && (
+            <p className="rounded-2xl border border-s-active/40 bg-s-active-soft px-4 py-3 text-sm text-s-active-ink" data-testid="size-migration-note">
+              Task sizes aren’t being saved yet, so every task counts as Medium. In Supabase → SQL Editor, run <span className="font-mono text-xs">supabase/migrations/20261122000000_task_size.sql</span>.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile label="Executed" value={data.team.completed} hint={`last ${data.windowDays} days`} testId="kpi-completed" />
-            <StatTile label="Avg. red → green" value={hours(data.team.avgHoursToGreen)} hint="assignment to proof" />
-            <StatTile label="On time" value={pct(data.team.onTimeRate)} hint="submitted before due" />
+            <StatTile label="Work done" value={work(data.team.workHours)} hint="typical hours, by task size" testId="kpi-work" />
+            <StatTile label="On time" value={pct(data.team.onTimeRate)} hint="by deadline, or fair for its size" />
+            <StatTile label="Right first time" value={pct(data.team.firstTimeRate)} hint="approved without changes" />
             <StatTile label="Blocked now" value={data.team.blockedNow} hint="waiting on someone" />
             <StatTile label="Awaiting audit" value={data.team.awaitingAudit} hint="green, not yet blue" />
           </div>
@@ -77,39 +90,69 @@ export default function VelocityPage({ embedded = false }: { embedded?: boolean 
           </Card>
 
           <Card className="overflow-hidden">
-            <div className="flex items-end justify-between px-5 pb-3 pt-5 sm:px-6">
+            <div className="flex flex-wrap items-end justify-between gap-3 px-5 pb-3 pt-5 sm:px-6">
               <div>
-                <h2 className="text-[0.9375rem] font-medium">Operator leaderboard</h2>
-                <p className="text-xs text-faint">Fastest average time to green first</p>
+                <h2 className="text-[0.9375rem] font-medium">Team leaderboard</h2>
+                <p className="text-xs text-faint">Fair score first: everyone judged against their own tasks’ deadlines and sizes</p>
               </div>
+              <button onClick={() => setHow((v) => !v)} aria-expanded={how} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-mute transition-colors hover:bg-ink/[0.05] hover:text-ink" data-testid="how-scored">
+                <Scale className="size-3.5" /> How it’s scored <ChevronDown className={cx('size-3.5 transition-transform', how && 'rotate-180')} />
+              </button>
             </div>
+            <AnimatePresence initial={false}>
+              {how && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: EASE }} className="overflow-hidden">
+                  <ul className="mx-5 mb-4 space-y-1.5 rounded-2xl bg-milk-2/70 px-4 py-3.5 text-[0.8125rem] leading-relaxed text-ink-2 sm:mx-6" data-testid="how-scored-text">
+                    <li><span className="font-medium text-ink">On time (70%).</span> Each task is judged against its own deadline. Without one, against a fair time for its size: a Quick call isn’t measured like a Large video edit.</li>
+                    <li><span className="font-medium text-ink">Right first time (30%).</span> Approved at the audit without changes requested.</li>
+                    <li><span className="font-medium text-ink">Fair clock.</span> It starts when the task became theirs (reassigned work starts fresh), and time blocked waiting on someone else doesn’t count.</li>
+                    <li><span className="font-medium text-ink">Volume isn’t ranked.</span> How much work someone gets depends on what they’re given, so “Work done” is shown but doesn’t change the order.</li>
+                    <li><span className="font-medium text-ink">Few tasks, cautious score.</span> With fewer than {SETTLED} tasks, a score starts near the team’s, so one lucky task can’t top the board.</li>
+                  </ul>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm" data-testid="velocity-table">
+              <table className="w-full min-w-[720px] text-sm" data-testid="velocity-table">
                 <thead>
                   <tr className="border-y border-line text-left text-xs text-faint">
                     <th className="px-5 py-2.5 font-normal sm:px-6">#</th>
-                    <th className="py-2.5 font-normal">Operator</th>
-                    <th className="w-[34%] py-2.5 font-normal">Avg. red → green</th>
-                    <th className="py-2.5 text-right font-normal">Executed</th>
+                    <th className="py-2.5 font-normal">Person</th>
+                    <th className="w-[28%] py-2.5 font-normal">Fair score</th>
+                    <th className="py-2.5 text-right font-normal">Work done</th>
                     <th className="py-2.5 text-right font-normal">On time</th>
+                    <th className="py-2.5 text-right font-normal">Right first time</th>
                     <th className="px-5 py-2.5 text-right font-normal sm:px-6">Open now</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.rows.map((r, i) => (
-                    <tr key={r.userId} className="border-b border-line last:border-0">
-                      <td className={cx('px-5 py-3 tabular-nums sm:px-6', i < 3 && r.completed > 0 ? 'font-semibold' : 'text-faint')}>{i + 1}</td>
+                    <tr key={r.userId} className="border-b border-line last:border-0" data-testid="leaderboard-row" data-user={r.userId}>
+                      <td className={cx('px-5 py-3 tabular-nums sm:px-6', i < 3 && r.fairScore !== null ? 'font-semibold' : 'text-faint')}>{r.fairScore === null ? '—' : i + 1}</td>
                       <td className="py-3">
                         <span className="flex items-center gap-2.5">
                           <Avatar name={r.fullName} src={r.avatarUrl} size={26} />
                           <span className="font-medium">{r.fullName}</span>
+                          {r.fairScore !== null && r.completed < SETTLED && (
+                            <span className="rounded-full bg-milk-2 px-2 py-0.5 text-[0.6875rem] text-mute" title={`Based on ${r.completed} task${r.completed === 1 ? '' : 's'}: the score starts near the team’s until there are ${SETTLED}.`} data-testid="few-tasks">
+                              few tasks
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className="py-3 pr-6">
-                        <InlineBar value={r.avgHoursToGreen} max={maxHours} label={hours(r.avgHoursToGreen)} />
+                        {r.fairScore === null ? (
+                          <span className="text-xs text-faint">Nothing executed yet</span>
+                        ) : (
+                          <InlineBar value={r.fairScore} max={100} label={String(r.fairScore)} />
+                        )}
                       </td>
-                      <td className="py-3 text-right tabular-nums">{r.completed}</td>
+                      <td className="py-3 text-right tabular-nums">
+                        <span className="block">{work(r.workHours)}</span>
+                        <span className="block text-[0.6875rem] text-faint">{r.completed} task{r.completed === 1 ? '' : 's'}</span>
+                      </td>
                       <td className="py-3 text-right tabular-nums">{pct(r.onTimeRate)}</td>
+                      <td className="py-3 text-right tabular-nums">{pct(r.firstTimeRate)}</td>
                       <td className="px-5 py-3 text-right tabular-nums sm:px-6">
                         {r.openNow}
                         {r.blockedNow > 0 && <span className="ml-1.5 rounded-full bg-s-active-soft px-1.5 py-0.5 text-[0.6875rem] text-s-active-ink">{r.blockedNow} blocked</span>}

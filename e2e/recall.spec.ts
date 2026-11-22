@@ -19,10 +19,9 @@ test.describe('Recall', () => {
     await modal.getByTestId('recall-confirm').click();
     await expect(page.getByText(/Recalled to today as DLG-\d+/)).toBeVisible();
 
-    // The original stays audited in History, marked as recalled, with no second recall.
+    // It leaves History entirely: the copy on today's board carries on.
     await page.keyboard.press('Escape');
-    await expect(audited.getByTestId('chip-recalled-to')).toBeVisible();
-    await expect(audited.getByTestId('quick-recall')).toHaveCount(0);
+    await expect(audited).toHaveCount(0);
 
     // Today: a fresh, open copy for Maya, marked as recalled, with the note as its first message.
     await page.getByTestId('nav-today').click();

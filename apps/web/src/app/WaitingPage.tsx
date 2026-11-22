@@ -6,9 +6,9 @@ import { useSearchParams } from 'react-router';
 import { dayKey, rangeLabel, type DayRange } from '../components/DateRangePicker';
 import { TimePicker } from '../components/DateTimePicker';
 import { useToast } from '../components/Toast';
-import { Button, cx, EASE, Select, Spinner } from '../components/ui';
+import { Button, cx, EASE, Segmented, Select, Spinner } from '../components/ui';
 import { PageHeader } from './AppShell';
-import { BoardLanes } from './BoardPage';
+import { BlockedBoard, BoardLanes } from './BoardPage';
 import { useBoard, useHistory, useNotifications, useTransition, useWorkspace } from './data';
 import { FilterBar, isFiltered, toApiFilters, useFilterParams } from './TaskFilters';
 import { ReassignModal } from './ReassignModal';
@@ -21,6 +21,8 @@ import { TaskDrawer } from './TaskDrawer';
  * (Open · In motion · Executed · Audited). The Today board starts empty each morning; this is where
  * yesterday and every day before wait for the owner. Step through days, pick a range, narrow to a
  * time of day, a person or a priority, or search. Tasks open and can still be worked on.
+ * Blocked work (from any day, today's too) isn't on the lanes: it waits under "Blocked" until it's
+ * unblocked or recalled. A recalled task leaves History; its copy carries on today.
  */
 
 const WINDOWS = [
@@ -47,12 +49,18 @@ export default function WaitingPage() {
   const isManager = role === 'owner' || role === 'manager';
   const { state, set } = useFilterParams();
   const [params, setParams] = useSearchParams();
-  const history = useHistory(toApiFilters(state, false), !!ws.data);
+  const view: 'all' | 'blocked' = params.get('view') === 'blocked' ? 'blocked' : 'all';
+  const blockedView = view === 'blocked';
+  const base = toApiFilters(state, false);
+  // Blocked spans every day, so the day stepper and time of day don't apply there.
+  const history = useHistory(blockedView ? { ...base, status: 'blocked', fromTime: undefined, toTime: undefined } : base, !!ws.data);
   const news = useNotifications().data?.tasks ?? {};
   const transition = useTransition();
   const [recalling, setRecalling] = useState<Task | null>(null);
   const [reassigning, setReassigning] = useState<Task | null>(null);
-  const todayStart = useBoard().data?.day.start ?? null;
+  const board = useBoard();
+  const todayStart = board.data?.day.start ?? null;
+  const blockedCount = board.data?.blocked.length ?? 0;
   const toast = useToast();
   const openTaskId = params.get('task');
   const openTask = (id: string | null, intent?: string) => {
@@ -64,14 +72,18 @@ export default function WaitingPage() {
     setParams(next, { replace: !id });
   };
 
-  const yesterday = addDays(dayKey(new Date()), -1);
+  const today = dayKey(new Date());
+  const yesterday = addDays(today, -1);
   const single = state.range.from && state.range.from === state.range.to ? state.range.from : null;
   const tz = history.data?.timezone ?? ws.data?.org.timezone ?? 'UTC';
   const rows = history.data?.rows ?? [];
   const tasks = useMemo(() => rows.map((r) => r.task), [rows]);
+  // On the board view, blocked work sits under its own tab, not in the lanes or the counts.
+  const blockedHere = blockedView ? 0 : tasks.filter((t) => t.status === 'blocked').length;
+  const total = Math.max(0, (history.data?.total ?? 0) - blockedHere);
   const dayFmt = useMemo(() => new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: 'numeric', month: 'short' }), [tz]);
   const counts = {
-    unfinished: tasks.filter((t) => t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked').length,
+    unfinished: tasks.filter((t) => t.status === 'open' || t.status === 'in_progress').length,
     awaiting: tasks.filter((t) => t.status === 'done').length,
     audited: tasks.filter((t) => t.status === 'approved').length,
   };
@@ -86,11 +98,18 @@ export default function WaitingPage() {
     set({ range: { from: next, to: next } });
   };
   const setRange = (range: DayRange) => set({ range });
+  const setView = (v: 'all' | 'blocked') => {
+    const next = new URLSearchParams(window.location.search);
+    if (v === 'blocked') next.set('view', 'blocked');
+    else next.delete('view');
+    next.delete('page');
+    setParams(next, { replace: true });
+  };
   const quick = async (task: Task, action: TransitionAction) => {
     if (action === 'submit') return openTask(task.id, 'submit');
     try {
       await transition.mutateAsync({ id: task.id, action });
-      toast.success(action === 'approve' ? 'Audited — sealed in the ledger' : action === 'start' ? 'Task started' : 'Unblocked');
+      toast.success(action === 'approve' ? 'Audited — sealed in the ledger' : action === 'start' ? 'Task started' : 'Unblocked — it’s back in motion');
     } catch (e) {
       toast.error(e);
     }
@@ -116,8 +135,18 @@ export default function WaitingPage() {
       />
 
       <div className="z-20 space-y-3 border-b border-[var(--edge)] bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0 lg:bg-panel">
-        {/* The day: step back and forth, or pick a range */}
+        {/* All tasks (the board) or Blocked; then the day: step back and forth, or pick a range */}
         <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'all', label: 'All tasks' },
+              { value: 'blocked', label: blockedCount ? `Blocked · ${blockedCount}` : 'Blocked' },
+            ]}
+            data-testid="history-view"
+          />
+          {!blockedView && (
           <div className="surface flex items-center gap-1 rounded-full p-1">
             <button onClick={() => step(-1)} className="grid size-8 place-items-center rounded-full text-ink-2 transition-colors hover:bg-ink/[0.06]" aria-label="Previous day" data-testid="day-prev">
               <ChevronLeft className="size-4" />
@@ -139,14 +168,16 @@ export default function WaitingPage() {
               <ChevronRight className="size-4" />
             </button>
           </div>
-          {(state.range.from || state.range.to) && (
+          )}
+          {!blockedView && (state.range.from || state.range.to) && (
             <button onClick={() => setRange({})} className="h-9 rounded-full px-3 text-[0.8125rem] text-mute hover:bg-ink/[0.05] hover:text-ink" data-testid="day-all">
               All earlier days
             </button>
           )}
         </div>
 
-        <FilterBar value={state} onChange={set} ws={ws.data} show={{ person: isManager, status: false }} maxDay={yesterday} testId="waiting-filters">
+        <FilterBar value={state} onChange={set} ws={ws.data} show={{ person: isManager, status: false }} maxDay={blockedView ? today : yesterday} testId="waiting-filters">
+          {!blockedView && (
           <Select
             size="sm"
             value={windowValue}
@@ -159,7 +190,8 @@ export default function WaitingPage() {
             aria-label="Time of day"
             data-testid="waiting-filters-time"
           />
-          {windowValue === 'custom' && (
+          )}
+          {!blockedView && windowValue === 'custom' && (
             <span className="flex items-center gap-1.5 text-[0.8125rem] text-mute">
               <TimePicker value={state.fromTime || '09:00'} onChange={(v) => set({ fromTime: v })} aria-label="From" data-testid="time-from" />
               to
@@ -175,12 +207,13 @@ export default function WaitingPage() {
         ) : (
           <>
             <span className="font-medium text-ink">
-              {history.data?.total ?? 0} task{history.data?.total === 1 ? '' : 's'}
+              {blockedView ? `${total} blocked` : `${total} task${total === 1 ? '' : 's'}`}
               {isFiltered(state) ? ' match' : ''}
             </span>
+            {blockedView && <span>Unblock a task to put it back in motion, or recall one from an earlier day to today.</span>}
             {counts.unfinished > 0 && <span className="text-s-open-ink">{counts.unfinished} unfinished</span>}
-            {counts.awaiting > 0 && <span className="text-s-done-ink">{counts.awaiting} {isManager ? 'awaiting your audit' : 'awaiting audit'}</span>}
-            {counts.audited > 0 && <span>{counts.audited} audited</span>}
+            {!blockedView && counts.awaiting > 0 && <span className="text-s-done-ink">{counts.awaiting} {isManager ? 'awaiting your audit' : 'awaiting audit'}</span>}
+            {!blockedView && counts.audited > 0 && <span>{counts.audited} audited</span>}
             {(history.data?.total ?? 0) > rows.length && <span>Showing the newest {rows.length}; narrow the dates to see the rest.</span>}
             {history.isFetching && <Spinner className="size-4" />}
           </>
@@ -191,6 +224,20 @@ export default function WaitingPage() {
         <Spinner className="mx-8" />
       ) : (
         <div className={cx('transition-opacity', history.isPlaceholderData && 'opacity-60')}>
+          {blockedView ? (
+            <BlockedBoard
+              tasks={tasks}
+              ws={ws.data}
+              news={news}
+              onOpen={(id) => openTask(id)}
+              onQuick={quick}
+              busyId={transition.isPending ? (transition.variables?.id ?? null) : null}
+              dayOf={(t) => (todayStart && t.createdAt >= todayStart ? 'Today' : dayFmt.format(new Date(t.createdAt)))}
+              recall={todayStart ? { dayStart: todayStart, onRecall: setRecalling } : undefined}
+              onReassign={isOwner ? setReassigning : undefined}
+              emptyHint={isFiltered(state) ? 'Nothing blocked matches these filters' : 'Nothing is blocked'}
+            />
+          ) : (
           <BoardLanes
             tasks={tasks}
             ws={ws.data}
@@ -205,7 +252,8 @@ export default function WaitingPage() {
             recall={todayStart ? { dayStart: todayStart, onRecall: setRecalling } : undefined}
             onReassign={isOwner ? setReassigning : undefined}
           />
-          {(history.data?.total ?? 0) === 0 && isFiltered(state) && (
+          )}
+          {total === 0 && isFiltered(state) && (
             <div className="-mt-4 px-4 pb-10 text-center sm:px-8">
               <Button variant="outline" onClick={() => set({ q: '', person: 'all', priority: 'all', status: 'all', range: {}, fromTime: '', toTime: '' })}>
                 Clear filters

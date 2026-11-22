@@ -1,5 +1,6 @@
 import {
   isManagerRole,
+  isSettledByRecall,
   playbookRunsOn,
   PLAYBOOK_CADENCES,
   taskRef,
@@ -148,7 +149,8 @@ export class AutomationService {
     const { escalation } = org.settings;
     const ent = await this.billing.entitlements(org.id);
     if (!escalation.enabled || !ent.features.escalations) return;
-    const tasks = await this.store.listTasks({ orgId: org.id, statuses: ['open', 'in_progress', 'blocked'] });
+    // A recalled task carries on as its copy; the original no longer escalates or goes overdue.
+    const tasks = (await this.store.listTasks({ orgId: org.id, statuses: ['open', 'in_progress', 'blocked'] })).filter((t) => !isSettledByRecall(t));
     for (const task of tasks) {
       if (task.status === 'blocked' && task.blockedAt) {
         const hours = (now.getTime() - new Date(task.blockedAt).getTime()) / HOUR;
@@ -192,7 +194,7 @@ export class AutomationService {
 
     const members = await this.store.listMembers(org.id);
     if (ent.features.whatsapp && (await this.store.getIntegrationFor(org.id, 'whatsapp'))) {
-      const open = await this.store.listTasks({ orgId: org.id, statuses: ['open', 'in_progress', 'blocked'] });
+      const open = (await this.store.listTasks({ orgId: org.id, statuses: ['open', 'in_progress', 'blocked'] })).filter((t) => !isSettledByRecall(t));
       for (const m of members) {
         const profile = await this.store.getProfile(m.userId);
         const mine = open.filter((t) => t.assigneeId === m.userId);

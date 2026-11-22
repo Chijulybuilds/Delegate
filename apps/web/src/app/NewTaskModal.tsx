@@ -1,17 +1,12 @@
-import { isManagerRole, type TaskPriority } from '@delegate/shared';
+import { isManagerRole, SIZE_META, type TaskPriority, type TaskSize } from '@delegate/shared';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
 import { Button, DateTimePicker, Field, Input, Modal, Select, Textarea } from '../components/ui';
 import { toLocalInput } from '../lib/format';
 import { useCreateTask, type WorkspaceData } from './data';
-import { departmentOptions, memberOptions, priorityOptions } from './options';
+import { departmentOptions, memberOptions, priorityOptions, sizeOptions, suggestDue } from './options';
 
-function defaultDue(): string {
-  const d = new Date();
-  d.setHours(18, 0, 0, 0);
-  if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1);
-  return toLocalInput(d);
-}
+const defaultDue = (size: TaskSize = 'm') => toLocalInput(suggestDue(size));
 
 export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: () => void; ws: WorkspaceData }) {
   const create = useCreateTask();
@@ -22,7 +17,11 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
   const [assigneeId, setAssigneeId] = useState(ws.me.userId);
   const [departmentId, setDepartmentId] = useState<string>('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
-  const [due, setDue] = useState(defaultDue);
+  // Size sets a fair deadline (until the deadline is picked by hand) and keeps Insights fair.
+  const [size, setSize] = useState<TaskSize>('m');
+  const [due, setDue] = useState(() => defaultDue());
+  const [dueTouched, setDueTouched] = useState(false);
+  const sized = ws.features?.taskSize !== false;
 
   useEffect(() => {
     if (open) {
@@ -31,7 +30,9 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
       setAssigneeId(isManager ? (ws.members.find((m) => m.userId !== ws.me.userId)?.userId ?? ws.me.userId) : ws.me.userId);
       setDepartmentId('');
       setPriority('medium');
+      setSize('m');
       setDue(defaultDue());
+      setDueTouched(false);
     }
   }, [open, isManager, ws.members, ws.me.userId]);
 
@@ -43,6 +44,7 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
         description,
         assigneeId,
         priority,
+        ...(sized ? { size } : {}),
         dueAt: due ? new Date(due).toISOString() : null,
         ...(departmentId ? { departmentId } : {}),
       });
@@ -73,9 +75,33 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
           <Field label="Priority">
             <Select value={priority} onChange={setPriority} options={priorityOptions} aria-label="Priority" />
           </Field>
-          <Field label="Due">
-            <DateTimePicker value={due} onChange={setDue} aria-label="Due" data-testid="task-due" />
-          </Field>
+          {sized && (
+            <Field label="Size">
+              <Select
+                value={size}
+                onChange={(v) => {
+                  setSize(v);
+                  if (!dueTouched) setDue(defaultDue(v));
+                }}
+                options={sizeOptions}
+                aria-label="Size"
+                data-testid="task-size"
+              />
+            </Field>
+          )}
+          <div className={sized ? 'sm:col-span-2' : undefined}>
+            <Field label="Due" hint={sized && !dueTouched ? `A fair deadline for a ${SIZE_META[size].label.toLowerCase()} task. Change it if you need to.` : undefined}>
+              <DateTimePicker
+                value={due}
+                onChange={(v) => {
+                  setDue(v);
+                  setDueTouched(true);
+                }}
+                aria-label="Due"
+                data-testid="task-due"
+              />
+            </Field>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={onClose}>

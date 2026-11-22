@@ -74,6 +74,9 @@ const toEvent = (r: Row): LedgerEvent => ({ ...camel<LedgerEvent>(r), id: String
 /** Production store backed by Supabase Postgres + Storage (service-role client, server-side only). */
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+const TASK_SIZE_MIGRATION = 'supabase/migrations/20261122000000_task_size.sql';
+/** PostgREST's "no such column" (the schema cache doesn't know it yet). */
+const isMissingColumn = (e: DbError, column: string) => !!e && (['PGRST204', '42703'].includes(e.code ?? '') || /column/i.test(e.message)) && e.message.includes(column);
 export class SupabaseStore implements Store {
   readonly kind = 'supabase' as const;
   private db: SupabaseClient;
@@ -136,10 +139,13 @@ export class SupabaseStore implements Store {
         const { error } = await this.publicDb.rpc('purge_organization', { p_org: NIL_UUID });
         if (!error) return `Security update needed: open Supabase → SQL Editor and run ${ACCOUNTS} (it stops browsers from calling the workspace-delete function).`;
       }
-      // Recall (newest migration).
+      // Recall.
       if (await missing('tasks', 'id, recalled_from_id, recalled_to_id')) {
         return 'The Supabase database is missing the latest migration: open Supabase → SQL Editor and run supabase/migrations/20261120000000_recall.sql.';
       }
+      // Task size is optional: without it the app still runs, tasks just save without a size.
+      this.hasTaskSize = !(await missing('tasks', 'id, size'));
+      if (!this.hasTaskSize) console.warn(`\n  ⚠ Task sizes won't be saved until you run ${TASK_SIZE_MIGRATION} (Supabase → SQL Editor).\n`);
       return null;
     } catch (error) {
       return error instanceof Error && /fetch failed|ENOTFOUND|ECONNREFUSED|Invalid API key|JWT/i.test(error.message)
@@ -303,17 +309,35 @@ export class SupabaseStore implements Store {
     const data = check(await this.db.from('tasks').select('*').eq('org_id', orgId).eq('seq', seq).maybeSingle(), 'loading task by reference');
     return data ? toTask(data) : null;
   }
+  /** False until the task-size migration has been run (then sizes are left out instead of failing). */
+  private hasTaskSize = true;
+  features() {
+    return { taskSize: this.hasTaskSize };
+  }
+  private sized<T extends { size?: unknown }>(row: T): T {
+    if (this.hasTaskSize || !('size' in row)) return row;
+    const { size: _size, ...rest } = row;
+    return rest as T;
+  }
+
   async insertTask(input: NewTask) {
     // `seq` is assigned by the tasks_assign_seq trigger (per-workspace counter).
-    const res = await this.db.from('tasks').insert(snake({ ...input })).select('*').single();
+    let res = await this.db.from('tasks').insert(snake(this.sized({ ...input }))).select('*').single();
+    if (isMissingColumn(res.error, 'size') && this.hasTaskSize) {
+      this.hasTaskSize = false;
+      res = await this.db.from('tasks').insert(snake(this.sized({ ...input }))).select('*').single();
+    }
     if (res.error?.code === '23505' && input.occurrenceKey) throw new HttpError(409, 'Already created for this run', 'duplicate_occurrence');
     return toTask(one(res, 'creating task'));
   }
   async updateTask(id: string, patch: TaskPatch) {
-    const data = check(
-      await this.db.from('tasks').update(snake({ ...patch, updatedAt: new Date().toISOString() })).eq('id', id).select('*').maybeSingle(),
-      'updating task',
-    );
+    const run = () => this.db.from('tasks').update(snake(this.sized({ ...patch, updatedAt: new Date().toISOString() }))).eq('id', id).select('*').maybeSingle();
+    let res = await run();
+    if (isMissingColumn(res.error, 'size') && this.hasTaskSize) {
+      this.hasTaskSize = false;
+      res = await run();
+    }
+    const data = check(res, 'updating task');
     if (!data) throw notFound('Task not found');
     return toTask(data);
   }

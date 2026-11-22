@@ -1,4 +1,4 @@
-import { DEFAULT_ORG_SETTINGS, type EventType, type MemberRole, type Task, type TaskPriority, type TaskStatus } from '@delegate/shared';
+import { DEFAULT_ORG_SETTINGS, type EventType, type MemberRole, type Task, type TaskPriority, type TaskSize, type TaskStatus } from '@delegate/shared';
 import { localParts } from '../services/automation.js';
 import { startOfDayInTz } from '../services/metrics.js';
 import type { MemoryStore } from './memory.js';
@@ -38,42 +38,47 @@ interface Blueprint {
   daysAgo: number;
   status: TaskStatus;
   priority: TaskPriority;
+  size: TaskSize;
   proof?: { url?: string; note: string };
   blocked?: { reason: string; waitingOn: string };
   overdue?: boolean;
+  /** Executed this many hours after its deadline (so the leaderboard has something to tell apart). */
+  late?: number;
+  /** The audit sent it back once before approving it. */
+  sentBack?: string;
 }
 
 const BLUEPRINTS: Blueprint[] = [
   // Audited (blue) — history for the velocity board
-  { title: 'Reconcile October vendor invoices', description: 'Match every October vendor invoice against POs and flag mismatches over $50.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 13, status: 'approved', priority: 'high', proof: { url: 'https://docs.example.com/recon-oct', note: '42 invoices matched, 3 flagged and sent to vendors.' } },
-  { title: 'Fix checkout timeout on mobile', description: 'Checkout times out on slow 3G. Add retry with backoff and raise gateway timeout.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 12, status: 'approved', priority: 'urgent', proof: { url: 'https://git.example.com/lumen/web/pull/412', note: 'PR merged, p95 checkout latency down from 9.1s to 2.4s.' } },
-  { title: 'Design social assets for webinar', description: 'Three sizes (1080², 1920×1080, 1200×628) with speaker photos.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 11, status: 'approved', priority: 'medium', proof: { url: 'https://figma.example.com/file/webinar', note: 'All 9 assets exported and uploaded to the shared drive.' } },
-  { title: 'Set up uptime alerts for API', description: 'Alert on-call when /health fails twice in 2 minutes.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 10, status: 'approved', priority: 'high', proof: { url: 'https://status.example.com/monitors', note: 'Monitors live, test page sent to on-call phone.' } },
-  { title: 'Prepare weekly payroll export', description: 'Export hours from the time tracker and send to payroll before noon.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 9, status: 'approved', priority: 'urgent', proof: { note: 'Export sent to payroll at 10:42, confirmation received.' } },
-  { title: 'Update pricing page copy', description: 'Reflect the new Team plan and annual discount.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 8, status: 'approved', priority: 'medium', proof: { url: 'https://lumen.example/pricing', note: 'Copy live, legal reviewed the discount wording.' } },
-  { title: 'Migrate staging DB to Postgres 17', description: 'Dump, restore and run the smoke suite against the new instance.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 7, status: 'approved', priority: 'high', proof: { url: 'https://git.example.com/lumen/infra/pull/88', note: 'Staging cut over, smoke suite green.' } },
-  { title: 'Resolve 12 aged support tickets', description: 'Anything older than 5 days in the support queue.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 6, status: 'approved', priority: 'medium', proof: { note: 'All 12 closed, 2 escalated to engineering with repro steps.' } },
-  { title: 'Record product walkthrough video', description: '3-minute walkthrough of the new dashboard for the help center.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 5, status: 'approved', priority: 'low', proof: { url: 'https://video.example.com/walkthrough-v3', note: 'Final cut 2:58, captions included.' } },
-  { title: 'Renew domain and SSL certificates', description: 'Renew lumen.example and the wildcard certificate before expiry.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 4, status: 'approved', priority: 'high', proof: { note: 'Renewed for 2 years, cert valid until 2028.' } },
-  { title: 'Compile customer churn interviews', description: 'Summarise the 8 churn calls into themes for the leadership sync.', assignee: 'demo-kemi', dept: 'Creative', daysAgo: 3, status: 'approved', priority: 'medium', proof: { url: 'https://docs.example.com/churn-themes', note: '4 themes, top one is onboarding friction.' } },
+  { title: 'Reconcile October vendor invoices', description: 'Match every October vendor invoice against POs and flag mismatches over $50.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 13, status: 'approved', size: 'l', priority: 'high', proof: { url: 'https://docs.example.com/recon-oct', note: '42 invoices matched, 3 flagged and sent to vendors.' } },
+  { title: 'Fix checkout timeout on mobile', description: 'Checkout times out on slow 3G. Add retry with backoff and raise gateway timeout.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 12, status: 'approved', size: 'l', priority: 'urgent', proof: { url: 'https://git.example.com/lumen/web/pull/412', note: 'PR merged, p95 checkout latency down from 9.1s to 2.4s.' } , late: 6 },
+  { title: 'Design social assets for webinar', description: 'Three sizes (1080², 1920×1080, 1200×628) with speaker photos.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 11, status: 'approved', size: 'm', priority: 'medium', proof: { url: 'https://figma.example.com/file/webinar', note: 'All 9 assets exported and uploaded to the shared drive.' } , sentBack: 'The 1200×628 size is missing the speaker names.' },
+  { title: 'Set up uptime alerts for API', description: 'Alert on-call when /health fails twice in 2 minutes.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 10, status: 'approved', size: 's', priority: 'high', proof: { url: 'https://status.example.com/monitors', note: 'Monitors live, test page sent to on-call phone.' } , late: 2 },
+  { title: 'Prepare weekly payroll export', description: 'Export hours from the time tracker and send to payroll before noon.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 9, status: 'approved', size: 's', priority: 'urgent', proof: { note: 'Export sent to payroll at 10:42, confirmation received.' } },
+  { title: 'Update pricing page copy', description: 'Reflect the new Team plan and annual discount.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 8, status: 'approved', size: 's', priority: 'medium', proof: { url: 'https://lumen.example/pricing', note: 'Copy live, legal reviewed the discount wording.' } , late: 3 },
+  { title: 'Migrate staging DB to Postgres 17', description: 'Dump, restore and run the smoke suite against the new instance.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 7, status: 'approved', size: 'l', priority: 'high', proof: { url: 'https://git.example.com/lumen/infra/pull/88', note: 'Staging cut over, smoke suite green.' } },
+  { title: 'Resolve 12 aged support tickets', description: 'Anything older than 5 days in the support queue.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 6, status: 'approved', size: 'm', priority: 'medium', proof: { note: 'All 12 closed, 2 escalated to engineering with repro steps.' } , sentBack: 'Two of these still have no reply to the customer.' },
+  { title: 'Record product walkthrough video', description: '3-minute walkthrough of the new dashboard for the help center.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 5, status: 'approved', size: 'l', priority: 'low', proof: { url: 'https://video.example.com/walkthrough-v3', note: 'Final cut 2:58, captions included.' } },
+  { title: 'Renew domain and SSL certificates', description: 'Renew lumen.example and the wildcard certificate before expiry.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 4, status: 'approved', size: 'xs', priority: 'high', proof: { note: 'Renewed for 2 years, cert valid until 2028.' } },
+  { title: 'Compile customer churn interviews', description: 'Summarise the 8 churn calls into themes for the leadership sync.', assignee: 'demo-kemi', dept: 'Creative', daysAgo: 3, status: 'approved', size: 'm', priority: 'medium', proof: { url: 'https://docs.example.com/churn-themes', note: '4 themes, top one is onboarding friction.' } },
 
   // Executed (green) — awaiting audit
-  { title: 'QA release 3.4 on Android', description: 'Run the regression checklist on Pixel 7 and Galaxy S23.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 1, status: 'done', priority: 'high', proof: { url: 'https://qa.example.com/runs/3.4', note: 'Checklist 58/58 passing, one cosmetic issue logged.' } },
-  { title: 'Clean up CRM duplicate contacts', description: 'Merge duplicates created by the webinar import.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 1, status: 'done', priority: 'low', proof: { note: 'Merged 214 duplicates, export of merged IDs attached in drive.' } },
-  { title: 'Draft brand guidelines for Kora launch', description: 'Logo usage, colour, type scale and tone of voice — v1 for review.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 0, status: 'done', priority: 'high', proof: { url: 'https://figma.example.com/file/kora-brand', note: 'v1 ready: 14 pages covering logo, colour, type and voice.' } },
+  { title: 'QA release 3.4 on Android', description: 'Run the regression checklist on Pixel 7 and Galaxy S23.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 1, status: 'done', size: 'm', priority: 'high', proof: { url: 'https://qa.example.com/runs/3.4', note: 'Checklist 58/58 passing, one cosmetic issue logged.' } },
+  { title: 'Clean up CRM duplicate contacts', description: 'Merge duplicates created by the webinar import.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 1, status: 'done', size: 's', priority: 'low', proof: { note: 'Merged 214 duplicates, export of merged IDs attached in drive.' } },
+  { title: 'Draft brand guidelines for Kora launch', description: 'Logo usage, colour, type scale and tone of voice — v1 for review.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 0, status: 'done', size: 'xl', priority: 'high', proof: { url: 'https://figma.example.com/file/kora-brand', note: 'v1 ready: 14 pages covering logo, colour, type and voice.' } },
 
   // In motion (amber)
-  { title: 'Finalize Q4 board deck', description: 'Pull final numbers from finance and tighten the narrative to 12 slides.', assignee: 'demo-kemi', dept: 'Creative', daysAgo: 0, status: 'in_progress', priority: 'urgent' },
-  { title: 'Ship onboarding email sequence v2', description: 'Five emails, new copy, wire into the lifecycle tool with UTM tags.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 0, status: 'in_progress', priority: 'high' },
-  { title: 'Negotiate courier contract renewal', description: 'Target 8% lower per-parcel rate or add same-day at current rate.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 0, status: 'blocked', priority: 'medium', blocked: { reason: 'Need signed volume forecast from Creative before the call.', waitingOn: 'demo-kemi' } },
-  { title: 'Integrate SSO for enterprise pilot', description: 'SAML SSO with the pilot customer IdP.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 1, status: 'blocked', priority: 'high', blocked: { reason: 'Waiting on IdP metadata XML from the customer IT team.', waitingOn: 'demo-leo' } },
+  { title: 'Finalize Q4 board deck', description: 'Pull final numbers from finance and tighten the narrative to 12 slides.', assignee: 'demo-kemi', dept: 'Creative', daysAgo: 0, status: 'in_progress', size: 'l', priority: 'urgent' },
+  { title: 'Ship onboarding email sequence v2', description: 'Five emails, new copy, wire into the lifecycle tool with UTM tags.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 0, status: 'in_progress', size: 'l', priority: 'high' },
+  { title: 'Negotiate courier contract renewal', description: 'Target 8% lower per-parcel rate or add same-day at current rate.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 0, status: 'blocked', size: 'm', priority: 'medium', blocked: { reason: 'Need signed volume forecast from Creative before the call.', waitingOn: 'demo-kemi' } },
+  { title: 'Integrate SSO for enterprise pilot', description: 'SAML SSO with the pilot customer IdP.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 1, status: 'blocked', size: 'xl', priority: 'high', blocked: { reason: 'Waiting on IdP metadata XML from the customer IT team.', waitingOn: 'demo-leo' } },
 
   // Open (red) — assigned this morning
-  { title: 'Write job post for ops associate', description: 'Role scope, must-haves, salary band. Post to two boards.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 0, status: 'open', priority: 'medium' },
-  { title: 'Audit SOC 2 access reviews', description: 'Confirm quarterly access reviews are complete for all production systems.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 0, status: 'open', priority: 'high' },
-  { title: 'Storyboard Q1 campaign film', description: '30-second hero film, 3 storyboard options.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 0, status: 'open', priority: 'medium' },
-  { title: 'Review agency invoices for October', description: 'Check hours against the SOW before payment run.', assignee: 'demo-kemi', dept: 'Creative', daysAgo: 0, status: 'open', priority: 'low' },
-  { title: 'Patch dependency CVE in image service', description: 'Bump the image library and redeploy.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 2, status: 'open', priority: 'urgent', overdue: true },
+  { title: 'Write job post for ops associate', description: 'Role scope, must-haves, salary band. Post to two boards.', assignee: 'demo-maya', dept: 'Operations', daysAgo: 0, status: 'open', size: 's', priority: 'medium' },
+  { title: 'Audit SOC 2 access reviews', description: 'Confirm quarterly access reviews are complete for all production systems.', assignee: 'demo-leo', dept: 'Engineering', daysAgo: 0, status: 'open', size: 'm', priority: 'high' },
+  { title: 'Storyboard Q1 campaign film', description: '30-second hero film, 3 storyboard options.', assignee: 'demo-sara', dept: 'Creative', daysAgo: 0, status: 'open', size: 'm', priority: 'medium' },
+  { title: 'Review agency invoices for October', description: 'Check hours against the SOW before payment run.', assignee: 'demo-kemi', dept: 'Creative', daysAgo: 0, status: 'open', size: 'xs', priority: 'low' },
+  { title: 'Patch dependency CVE in image service', description: 'Bump the image library and redeploy.', assignee: 'demo-tunde', dept: 'Engineering', daysAgo: 2, status: 'open', size: 's', priority: 'urgent', overdue: true },
 ];
 
 export async function seedDemo(store: MemoryStore): Promise<void> {
@@ -175,7 +180,9 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
     const created = clampPast(addH(dayStart(bp.daysAgo), 7 + rand() * 1.5)); // assigned ~8am
     const due = addH(dayStart(bp.daysAgo), bp.overdue ? 17 : 18 + (bp.daysAgo === 0 ? 0 : 0));
     const started = clampPast(addH(created, 0.2 + rand() * 1.4));
-    const submitted = clampPast(addH(started, 0.8 + rand() * (bp.priority === 'urgent' ? 3 : 7)));
+    const firstSubmit = clampPast(bp.late ? addH(due, bp.late) : addH(started, 0.8 + rand() * (bp.priority === 'urgent' ? 3 : 7)));
+    // Sent back once: the final submission comes a little later.
+    const submitted = bp.sentBack ? clampPast(addH(firstSubmit, 2)) : firstSubmit;
     const approved = clampPast(addH(submitted, 0.4 + rand() * 4));
 
     const reached = (s: TaskStatus) => {
@@ -195,6 +202,7 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
       description: bp.description,
       status: bp.status,
       priority: bp.priority,
+      size: bp.size,
       assigneeId: bp.assignee,
       createdById: assigner,
       departmentId: deptIds[bp.dept] ?? null,
@@ -252,6 +260,10 @@ export async function seedDemo(store: MemoryStore): Promise<void> {
         aiReason: null,
         createdAt: iso(submitted),
       });
+      if (bp.sentBack) {
+        await event('task.submitted', firstSubmit, task, bp.assignee, 'in_progress', 'done');
+        await event('task.changes_requested', addH(firstSubmit, 0.5), task, task.approvedById ?? assigner, 'done', 'in_progress', { comment: bp.sentBack });
+      }
       await event('task.submitted', submitted, task, bp.assignee, 'in_progress', 'done');
     }
     if (reached('approved')) {

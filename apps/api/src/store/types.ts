@@ -53,6 +53,8 @@ export interface Store {
   readonly kind: 'memory' | 'supabase';
   /** Plain-language description of a database that is missing a migration, or null when it is up to date. */
   checkSchema?(): Promise<string | null>;
+  /** Features that need a newer database than the app can run on. Absent = everything available. */
+  features?(): { taskSize: boolean };
 
   // Profiles
   getProfile(id: string): Promise<Profile | null>;

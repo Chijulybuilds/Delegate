@@ -14,6 +14,24 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
+/**
+ * How big a task is. It keeps Insights fair: a quick call and a day of video editing aren't judged
+ * by the same clock. `effortHours` is the work it typically takes (what "work done" adds up);
+ * `fairHours` is a reasonable turnaround when no deadline was set; `suggestHours` is the deadline
+ * the task form proposes for it.
+ */
+export const TASK_SIZES = ['xs', 's', 'm', 'l', 'xl'] as const;
+export type TaskSize = (typeof TASK_SIZES)[number];
+export const SIZE_META: Record<TaskSize, { label: string; hint: string; effortHours: number; fairHours: number; suggestHours: number }> = {
+  xs: { label: 'Quick', hint: 'Minutes: a call, a text, a quick reply', effortHours: 0.25, fairHours: 4, suggestHours: 2 },
+  s: { label: 'Small', hint: 'About an hour', effortHours: 1, fairHours: 8, suggestHours: 4 },
+  m: { label: 'Medium', hint: 'A few hours', effortHours: 3, fairHours: 24, suggestHours: 8 },
+  l: { label: 'Large', hint: 'About a day of work, like editing a 1-hour video', effortHours: 6, fairHours: 48, suggestHours: 30 },
+  xl: { label: 'Huge', hint: 'Several days of work', effortHours: 16, fairHours: 120, suggestHours: 72 },
+};
+/** Tasks without a size (older ones, or from chat commands) count as Medium. */
+export const sizeOf = (task: { size?: TaskSize | null }): TaskSize => task.size ?? 'm';
+
 export const MEMBER_ROLES = ['owner', 'manager', 'member'] as const;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 
@@ -25,7 +43,8 @@ export type AiVerdict = 'pass' | 'review' | 'fail';
 /** Board lanes. `blocked` shares the amber lane with `in_progress`. */
 export const LANES = [
   { id: 'open', label: 'Open', statuses: ['open'] },
-  { id: 'active', label: 'In motion', statuses: ['in_progress', 'blocked'] },
+  // Blocked tasks sit outside the lanes, on History → Blocked, until they're unblocked or recalled.
+  { id: 'active', label: 'In motion', statuses: ['in_progress'] },
   { id: 'done', label: 'Executed', statuses: ['done'] },
   { id: 'approved', label: 'Audited', statuses: ['approved'] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; statuses: readonly TaskStatus[] }>;
@@ -128,11 +147,20 @@ export function canSeeTask(viewer: { userId: string; role: MemberRole }, task: {
   return viewer.role === 'owner' || task.assigneeId === viewer.userId || task.createdById === viewer.userId || task.waitingOnId === viewer.userId;
 }
 
+/**
+ * A recalled task lives on as its copy on a later day. Unless it had already been audited (that
+ * record stands), the original is settled: it leaves History, stops escalating and takes no actions.
+ */
+export function isSettledByRecall(task: { status: TaskStatus; recalledToId?: string | null }): boolean {
+  return !!task.recalledToId && task.status !== 'approved';
+}
+
 /** Which actions can this viewer take on this task right now? Mirrors the API's enforcement. */
 export function availableActions(
-  task: Pick<Task, 'status' | 'assigneeId'>,
+  task: Pick<Task, 'status' | 'assigneeId'> & { recalledToId?: string | null },
   viewer: { userId: string; role: MemberRole },
 ): TransitionAction[] {
+  if (isSettledByRecall(task)) return [];
   const isAssignee = task.assigneeId === viewer.userId;
   const isManager = isManagerRole(viewer.role);
   return (Object.values(TRANSITIONS) as TransitionRule[])
@@ -213,6 +241,8 @@ export interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
+  /** How big it is (null = not set, counts as Medium). */
+  size?: TaskSize | null;
   assigneeId: string;
   createdById: string;
   departmentId: string | null;
@@ -344,9 +374,16 @@ export interface VelocityRow {
   avatarUrl: string | null;
   completed: number;
   approved: number;
-  /** Average hours from creation (Red) to submission (Green). */
+  /** Average hours from being given the task to executing it, not counting time blocked on someone else. */
   avgHoursToGreen: number | null;
+  /** Share delivered on time: by the deadline (extended by time blocked on others), or without one, within a fair time for the task's size. */
   onTimeRate: number | null;
+  /** Share approved at the first audit, without changes requested (of the audited ones). */
+  firstTimeRate: number | null;
+  /** The work delivered, in typical hours for the tasks' sizes. */
+  workHours: number;
+  /** 0–100: on time (70%) and approved first time (30%), eased toward the team's score when there are only a few tasks. Null with nothing executed. */
+  fairScore: number | null;
   openNow: number;
   blockedNow: number;
 }
@@ -357,6 +394,8 @@ export interface VelocityResponse {
     completed: number;
     avgHoursToGreen: number | null;
     onTimeRate: number | null;
+    firstTimeRate: number | null;
+    workHours: number;
     openNow: number;
     blockedNow: number;
     awaitingAudit: number;
@@ -715,6 +754,8 @@ export interface BoardResponse {
   day: { start: string; timezone: string };
   /** Earlier days (on History) that still need something, among the tasks the viewer can see. */
   earlier: { unfinished: number; awaitingAudit: number };
+  /** Every blocked task the viewer can see, from any day: they sit on History → Blocked, not in the lanes. */
+  blocked: Task[];
 }
 
 /** A task with the names around it (History and Audits). */
@@ -734,7 +775,8 @@ export interface TaskFilters {
   assigneeId?: string;
   priority?: TaskPriority;
   /** A board lane: open, active (in motion), done (executed), approved (audited). */
-  status?: (typeof LANES)[number]['id'] | 'unfinished';
+  /** A lane, everything not finished, or Blocked (from any day, today included). */
+  status?: (typeof LANES)[number]['id'] | 'unfinished' | 'blocked';
   /** Only tasks the viewer may recall to today (the Recall page). */
   recallable?: boolean;
   /** On or after (ISO). */
