@@ -313,20 +313,23 @@ export function Segmented<T extends string>({
   onChange,
   options,
   className,
+  'data-testid': testId,
 }: {
   value: T;
   onChange: (v: T) => void;
   options: Array<{ value: T; label: string }>;
   className?: string;
+  'data-testid'?: string;
 }) {
   return (
-    <div className={cx('well relative inline-flex rounded-full bg-milk-2/60 p-1', className)} role="tablist">
+    <div className={cx('well relative inline-flex rounded-full bg-milk-2/60 p-1', className)} role="tablist" data-testid={testId}>
       {options.map((o) => (
         <button
           key={o.value}
           role="tab"
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
+          data-testid={testId ? `${testId}-${o.value}` : undefined}
           className={cx('relative z-10 h-7 rounded-full px-3 text-[0.8125rem] font-medium transition-colors', value === o.value ? 'text-milk' : 'text-mute hover:text-ink')}
         >
           {value === o.value && (

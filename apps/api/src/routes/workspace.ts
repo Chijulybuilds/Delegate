@@ -227,7 +227,7 @@ export function workspaceRoutes(deps: {
   r.get('/history', async (req, res) => {
     const { page, pageSize, ...f } = auditFilters
       .extend({
-        status: z.enum(['open', 'active', 'done', 'approved', 'unfinished']).optional(),
+        status: z.enum(['open', 'active', 'done', 'approved', 'unfinished', 'blocked']).optional(),
         recallable: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
         fromTime: hhmm.optional(),
         toTime: hhmm.optional(),

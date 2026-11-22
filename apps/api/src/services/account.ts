@@ -1,4 +1,4 @@
-import { isManagerRole, type LeavePlan, type Member } from '@delegate/shared';
+import { isManagerRole, isSettledByRecall, type LeavePlan, type Member } from '@delegate/shared';
 import { forbidden, HttpError, notFound } from '../lib/errors.js';
 import type { Store } from '../store/types.js';
 import type { BillingService } from './billing.js';
@@ -87,7 +87,7 @@ export class AccountService {
     // Names travel with the events: people who've left are no longer in the member list.
     const names = { name: leaver.fullName, toName: heir.fullName, actorName: reason === 'member_left' ? leaver.fullName : heir.fullName };
     // Hand over unfinished work so nothing is left assigned to someone who's gone.
-    const unfinished = (await this.store.listTasks({ orgId, statuses: ['open', 'in_progress', 'blocked'] })).filter((t) => t.assigneeId === leaver.userId);
+    const unfinished = (await this.store.listTasks({ orgId, statuses: ['open', 'in_progress', 'blocked'] })).filter((t) => t.assigneeId === leaver.userId && !isSettledByRecall(t));
     for (const t of unfinished) {
       await this.store.updateTask(t.id, { assigneeId: heir.userId });
       await this.store.appendEvent({ orgId, taskId: t.id, actorId, type: 'task.updated', fromStatus: t.status, toStatus: t.status, meta: { title: t.title, reassigned: { from: leaver.userId, to: heir.userId }, ...names, reason } });

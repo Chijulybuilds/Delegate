@@ -25,7 +25,8 @@ export type AiVerdict = 'pass' | 'review' | 'fail';
 /** Board lanes. `blocked` shares the amber lane with `in_progress`. */
 export const LANES = [
   { id: 'open', label: 'Open', statuses: ['open'] },
-  { id: 'active', label: 'In motion', statuses: ['in_progress', 'blocked'] },
+  // Blocked tasks sit outside the lanes, on History → Blocked, until they're unblocked or recalled.
+  { id: 'active', label: 'In motion', statuses: ['in_progress'] },
   { id: 'done', label: 'Executed', statuses: ['done'] },
   { id: 'approved', label: 'Audited', statuses: ['approved'] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; statuses: readonly TaskStatus[] }>;
@@ -128,11 +129,20 @@ export function canSeeTask(viewer: { userId: string; role: MemberRole }, task: {
   return viewer.role === 'owner' || task.assigneeId === viewer.userId || task.createdById === viewer.userId || task.waitingOnId === viewer.userId;
 }
 
+/**
+ * A recalled task lives on as its copy on a later day. Unless it had already been audited (that
+ * record stands), the original is settled: it leaves History, stops escalating and takes no actions.
+ */
+export function isSettledByRecall(task: { status: TaskStatus; recalledToId?: string | null }): boolean {
+  return !!task.recalledToId && task.status !== 'approved';
+}
+
 /** Which actions can this viewer take on this task right now? Mirrors the API's enforcement. */
 export function availableActions(
-  task: Pick<Task, 'status' | 'assigneeId'>,
+  task: Pick<Task, 'status' | 'assigneeId'> & { recalledToId?: string | null },
   viewer: { userId: string; role: MemberRole },
 ): TransitionAction[] {
+  if (isSettledByRecall(task)) return [];
   const isAssignee = task.assigneeId === viewer.userId;
   const isManager = isManagerRole(viewer.role);
   return (Object.values(TRANSITIONS) as TransitionRule[])
@@ -715,6 +725,8 @@ export interface BoardResponse {
   day: { start: string; timezone: string };
   /** Earlier days (on History) that still need something, among the tasks the viewer can see. */
   earlier: { unfinished: number; awaitingAudit: number };
+  /** Every blocked task the viewer can see, from any day: they sit on History → Blocked, not in the lanes. */
+  blocked: Task[];
 }
 
 /** A task with the names around it (History and Audits). */
@@ -734,7 +746,8 @@ export interface TaskFilters {
   assigneeId?: string;
   priority?: TaskPriority;
   /** A board lane: open, active (in motion), done (executed), approved (audited). */
-  status?: (typeof LANES)[number]['id'] | 'unfinished';
+  /** A lane, everything not finished, or Blocked (from any day, today included). */
+  status?: (typeof LANES)[number]['id'] | 'unfinished' | 'blocked';
   /** Only tasks the viewer may recall to today (the Recall page). */
   recallable?: boolean;
   /** On or after (ISO). */

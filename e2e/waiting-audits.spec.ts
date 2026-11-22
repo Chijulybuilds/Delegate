@@ -16,7 +16,7 @@ test.describe('History and Audits', () => {
     await expect(page.getByTestId('task-card').first()).toBeVisible();
     await expect(page.getByTestId('task-card').filter({ hasNotText: 'Tunde' })).toHaveCount(0);
     await expect(page.getByTestId('waiting-filters-person')).toHaveCount(0); // no "everyone" filter for staff
-    await page.getByTestId('waiting-filters-search').fill('SSO');
+    await page.getByTestId('waiting-filters-search').fill('CVE');
     await expect(page.getByTestId('task-card')).toHaveCount(1);
     await page.goto('/app/history'); // old links still work
     await expect(page).toHaveURL(/\/app\/waiting/);
@@ -36,7 +36,8 @@ test.describe('History and Audits', () => {
     // Step to yesterday, then the day before.
     await page.getByTestId('day-prev').click();
     await expect(page.getByTestId('day-title')).toContainText('Yesterday');
-    await expect(page.getByTestId('lane-active').locator(card(page, 'Integrate SSO for enterprise pilot'))).toBeVisible();
+    await expect(page.getByTestId('lane-done').locator(card(page, 'QA release 3.4 on Android'))).toBeVisible();
+    await expect(card(page, 'Integrate SSO for enterprise pilot')).toHaveCount(0); // blocked: under Blocked, not on the lanes
     await expect(card(page, 'Renew domain and SSL certificates')).toHaveCount(0);
     await page.getByTestId('day-prev').click();
     await expect(page.getByTestId('day-title')).not.toContainText('Yesterday');
@@ -55,6 +56,41 @@ test.describe('History and Audits', () => {
     await expect(page.getByTestId('task-card')).toHaveCount(1);
     await card(page, 'Patch dependency CVE in image service').click();
     await expect(page.getByTestId('drawer-title')).toHaveText('Patch dependency CVE in image service');
+  });
+
+  test('Blocked work leaves the lanes and waits on History → Blocked, where it can be unblocked or recalled', async ({ page }) => {
+    await loginAs(page, 'demo-ada');
+    // Today's blocked task isn't on Today's lanes; the Blocked tile counts every day's.
+    await expect(card(page, 'Negotiate courier contract renewal')).toHaveCount(0);
+    await expect(page.getByTestId('earlier-days')).toContainText('2 blocked');
+    await page.getByTestId('glance-blocked').click();
+    await expect(page).toHaveURL(/view=blocked/);
+
+    const blocked = page.getByTestId('lane-blocked');
+    const courier = blocked.locator(card(page, 'Negotiate courier contract renewal')); // today
+    const sso = blocked.locator(card(page, 'Integrate SSO for enterprise pilot')); // yesterday
+    await expect(page.getByTestId('lane-count-blocked')).toHaveText('2');
+    await expect(courier.getByTestId('task-day')).toHaveText('Today');
+    await expect(courier.getByTestId('quick-recall')).toHaveCount(0); // already today's
+    await expect(sso.getByTestId('quick-recall')).toBeVisible();
+
+    // Unblock: back in motion on its own day.
+    await courier.getByTestId('quick-unblock').click();
+    await expect(page.getByText('Unblocked — it’s back in motion')).toBeVisible();
+    await expect(courier).toHaveCount(0);
+
+    // Recall: it leaves History entirely; a fresh copy is on today's board.
+    await sso.getByTestId('quick-recall').click();
+    await page.getByTestId('recall-confirm').click();
+    await expect(page.getByText(/Recalled to today as DLG-\d+/)).toBeVisible();
+    await expect(sso).toHaveCount(0);
+    await expect(page.getByText('Nothing is blocked')).toBeVisible();
+    await page.getByTestId('history-view-all').click();
+    await expect(card(page, 'Integrate SSO for enterprise pilot')).toHaveCount(0);
+
+    await page.getByTestId('nav-today').click();
+    await expect(page.getByTestId('lane-active').locator(card(page, 'Negotiate courier contract renewal'))).toBeVisible();
+    await expect(page.getByTestId('lane-open').locator(card(page, 'Integrate SSO for enterprise pilot'))).toBeVisible();
   });
 
   test('Audits: owner only, searchable, filterable, downloadable', async ({ page }) => {

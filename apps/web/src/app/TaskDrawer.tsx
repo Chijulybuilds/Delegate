@@ -529,7 +529,8 @@ function BlockModal({ open, onClose, taskId, ws, assigneeId }: { open: boolean; 
     e.preventDefault();
     try {
       await transition.mutateAsync({ id: taskId, action: 'block', reason, waitingOnId: waitingOnId || null });
-      toast.success(waitingOnId ? `Blocker flagged — ${memberName(ws.members, waitingOnId).split(' ')[0]} has been pinged` : 'Blocker flagged on the heartbeat');
+      // Blocked work leaves the lanes: say where it went.
+      toast.success(`${waitingOnId ? `Blocker flagged — ${memberName(ws.members, waitingOnId).split(' ')[0]} has been pinged` : 'Blocker flagged'}. It’s in History → Blocked until it’s unblocked.`);
       setReason('');
       setWaitingOnId('');
       onClose();

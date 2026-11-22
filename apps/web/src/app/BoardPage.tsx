@@ -41,11 +41,12 @@ const laneWash: Record<string, string> = {
 };
 
 type Focus = 'toStart' | 'inMotion' | 'overdue' | 'blocked' | 'waitingOnMe' | 'toAudit';
-const isLate = (t: Task) => !!t.dueAt && new Date(t.dueAt).getTime() < Date.now() && (t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked');
+// Blocked work isn't on the lanes (it waits on History → Blocked), so it isn't counted here either.
+const isLate = (t: Task) => !!t.dueAt && new Date(t.dueAt).getTime() < Date.now() && (t.status === 'open' || t.status === 'in_progress');
 /** `team` = a manager's view across everyone; otherwise only the viewer's own work. */
 const FOCUS: Record<Focus, { label: string; match: (me: string, team: boolean) => (t: Task) => boolean }> = {
   toStart: { label: 'To start', match: (me) => (t) => t.assigneeId === me && t.status === 'open' },
-  inMotion: { label: 'In motion', match: (me) => (t) => t.assigneeId === me && (t.status === 'in_progress' || t.status === 'blocked') },
+  inMotion: { label: 'In motion', match: (me) => (t) => t.assigneeId === me && t.status === 'in_progress' },
   overdue: { label: 'Overdue', match: (me, team) => (t) => isLate(t) && (team || t.assigneeId === me) },
   blocked: { label: 'Blocked', match: () => (t) => t.status === 'blocked' },
   waitingOnMe: { label: 'Waiting on me', match: (me) => (t) => t.status === 'blocked' && t.waitingOnId === me },
@@ -115,21 +116,25 @@ export default function BoardPage() {
   const navigate = useNavigate();
   // For the owner, History includes everything from earlier days that still needs action.
   const earlier = (board.data?.earlier.unfinished ?? 0) + (board.data?.earlier.awaitingAudit ?? 0);
+  // Blocked work (any day) is off the lanes, on History → Blocked.
+  const blocked = board.data?.blocked ?? [];
+  const waitingOnMe = blocked.filter((t) => t.waitingOnId === meId);
   const glance = useMemo(() => {
     const all = board.data?.tasks ?? [];
     return GLANCE[isManager ? 'manager' : 'member'].map((f) => ({
       id: f,
       // The owner's tile opens History (earlier days); for everyone else it's what's blocked on them.
       label: f === 'waitingOnMe' && isOwner ? 'History' : FOCUS[f].label,
-      count: f === 'waitingOnMe' && isOwner ? earlier : all.filter(FOCUS[f].match(meId, isManager)).length,
+      count: f === 'waitingOnMe' && isOwner ? earlier : f === 'blocked' ? blocked.length : f === 'waitingOnMe' ? waitingOnMe.length : all.filter(FOCUS[f].match(meId, isManager)).length,
     }));
-  }, [board.data, meId, isManager, isOwner, earlier]);
+  }, [board.data, meId, isManager, isOwner, earlier, blocked.length, waitingOnMe.length]);
 
-  const waitingOnMe = (board.data?.tasks ?? []).filter((t) => t.status === 'blocked' && t.waitingOnId === meId);
   const counts = useMemo(() => {
     const all = board.data?.tasks ?? [];
-    return { open: all.filter((t) => t.status !== 'approved').length, done: all.filter((t) => t.status === 'done').length };
+    return { open: all.filter((t) => t.status === 'open' || t.status === 'in_progress').length, done: all.filter((t) => t.status === 'done').length };
   }, [board.data]);
+  /** The tiles that open a page instead of filtering the board. */
+  const tileLink = (id: Focus) => (id === 'waitingOnMe' && isOwner ? '/app/waiting' : id === 'blocked' || id === 'waitingOnMe' ? '/app/waiting?view=blocked' : null);
 
   if (ws.isLoading || board.isLoading || !ws.data) {
     return (
@@ -172,7 +177,11 @@ export default function BoardPage() {
           return (
             <motion.button
               key={g.id}
-              onClick={() => (g.id === 'waitingOnMe' && isOwner ? navigate('/app/waiting') : setFocus((f) => (f === g.id ? null : g.id)))}
+              onClick={() => {
+                const to = tileLink(g.id);
+                if (to) navigate(to);
+                else setFocus((f) => (f === g.id ? null : g.id));
+              }}
               aria-pressed={on}
               whileHover={on ? undefined : { y: -2 }}
               whileTap={{ scale: 0.98 }}
@@ -207,19 +216,20 @@ export default function BoardPage() {
         })}
       </div>
 
-      {/* Every day starts fresh: earlier work is on History (everyone sees their own). */}
-      {board.data && earlier > 0 && (
+      {/* Every day starts fresh: earlier work is on History (everyone sees their own), and so is anything blocked. */}
+      {board.data && (earlier > 0 || blocked.length > 0) && (
         <Link
-          to="/app/waiting"
+          to={earlier > 0 ? '/app/waiting' : '/app/waiting?view=blocked'}
           className="group mx-4 mb-4 flex items-center gap-3 rounded-2xl border border-dashed border-line-2 px-4 py-2.5 text-sm text-ink-2 transition-colors hover:border-ink hover:text-ink sm:mx-8"
           data-testid="earlier-days"
         >
           <History className="size-4 shrink-0 text-mute" />
           <span>
-            From earlier days:{' '}
+            In History:{' '}
             {[
               board.data.earlier.unfinished > 0 && `${board.data.earlier.unfinished} unfinished`,
               board.data.earlier.awaitingAudit > 0 && `${board.data.earlier.awaitingAudit} awaiting audit`,
+              blocked.length > 0 && `${blocked.length} blocked`,
             ]
               .filter(Boolean)
               .join(' · ')}
@@ -401,6 +411,79 @@ export function BoardLanes({
           );
         })}
       </div>
+    </LayoutGroup>
+  );
+}
+
+/**
+ * History → Blocked: blocked work from any day sits here, off the lanes, until someone unblocks it
+ * (it goes back in motion, on its own day) or recalls it (a fresh copy on today's board).
+ */
+export function BlockedBoard({
+  tasks,
+  ws,
+  news,
+  onOpen,
+  onQuick,
+  busyId,
+  dayOf,
+  recall,
+  onReassign,
+  emptyHint = 'Nothing is blocked',
+}: {
+  tasks: Task[];
+  ws: WorkspaceData;
+  news: Record<string, { count: number }>;
+  onOpen: (id: string) => void;
+  onQuick: (task: Task, action: TransitionAction) => void;
+  busyId: string | null;
+  dayOf: (task: Task) => string | null;
+  recall?: { dayStart: string; onRecall: (task: Task) => void };
+  onReassign?: (task: Task) => void;
+  emptyHint?: string;
+}) {
+  const viewer = { userId: ws.me.userId, role: ws.me.role };
+  return (
+    <LayoutGroup>
+      <section className="relative mx-4 mb-10 flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5 sm:mx-8" aria-label="Blocked" data-testid="lane-blocked">
+        <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent', laneWash.active)} aria-hidden />
+        <div className={cx('pointer-events-none absolute inset-x-0 top-0 h-12 opacity-80', laneBand.active)} aria-hidden />
+        <header className="relative flex items-center gap-2 px-2 pb-3 pt-1.5">
+          <span className={cx('glow size-2.5 rounded-full', laneText.active)} />
+          <h2 className="text-[0.9062rem] font-medium tracking-[-0.01em]">Blocked</h2>
+          <span className="hidden text-xs text-mute sm:inline">· unblock it to put it back in motion, or recall it to today</span>
+          <span className="ml-auto grid min-w-6 place-items-center rounded-full bg-paper/90 px-2 py-0.5 text-xs tabular-nums text-ink-2 shadow-[var(--shadow-card)]" data-testid="lane-count-blocked">
+            {tasks.length}
+          </span>
+        </header>
+        {tasks.length === 0 ? (
+          <motion.div className="relative flex flex-1 flex-col items-center justify-center gap-2 px-2 py-10 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+            <EmptyLaneArt className="w-24 text-faint" />
+            <p className="text-[0.8125rem] text-mute">{emptyHint}</p>
+          </motion.div>
+        ) : (
+          <div className="relative grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {tasks.map((t) => (
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  ws={ws}
+                  aiVerdict={null}
+                  verifiedBy={null}
+                  news={news[t.id]?.count ?? 0}
+                  day={dayOf(t)}
+                  onRecall={recall && canRecall(viewer, t, recall.dayStart) ? () => recall.onRecall(t) : undefined}
+                  onReassign={onReassign && canReassign(viewer, t) ? () => onReassign(t) : undefined}
+                  onOpen={() => onOpen(t.id)}
+                  onQuick={(a) => onQuick(t, a)}
+                  busy={busyId === t.id}
+                />
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </section>
     </LayoutGroup>
   );
 }

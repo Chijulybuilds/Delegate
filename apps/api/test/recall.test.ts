@@ -42,6 +42,10 @@ describe('recall: bring an earlier task back to today', () => {
     expect((await board(ada)).tasks.map((t) => t.id)).toContain(copy.id);
     expect(store.tasks.get(audited.id)).toMatchObject({ status: 'approved', recalledToId: copy.id });
 
+    // It has left History entirely: only the copy, on today's board, carries on.
+    const history = (await request(app).get('/api/history').set(auth(ada)).expect(200)).body.rows as Array<{ task: Task }>;
+    expect(history.map((r) => r.task.id)).not.toContain(audited.id);
+
     // Once is enough: recall the new one if it needs another day.
     const again = await request(app).post(`/api/tasks/${audited.id}/recall`).set(auth(ada)).send({}).expect(409);
     expect(again.body.error.message).toContain(`DLG-${copy.seq}`);
@@ -64,9 +68,10 @@ describe('recall: bring an earlier task back to today', () => {
     expect(res.body.task).toMatchObject({ assigneeId: 'demo-leo', dueAt: due });
     const detail = (await request(app).get(`/api/tasks/${res.body.task.id}`).set(auth(ada)).expect(200)).body;
     expect(detail.comments[0].body).toBe('Leo, please take this one today.');
-    // It no longer counts as left over from earlier days.
-    const before = (await board(ada)).earlier.unfinished;
-    expect(before).toBe(1); // only the SSO task is still waiting
+    // It no longer counts as left over from earlier days (the blocked SSO task is counted as blocked).
+    const b = await board(ada);
+    expect(b.earlier.unfinished).toBe(0);
+    expect(b.blocked.map((t) => t.title)).toContain('Integrate SSO for enterprise pilot');
   });
 
   it('staff recall their own unfinished work to themselves, and nothing else', async () => {
@@ -111,5 +116,46 @@ describe('recall: bring an earlier task back to today', () => {
     expect(res.body.skipped).toHaveLength(2);
     expect(res.body.skipped.find((x: { id: string }) => x.id === sso.id).reason).toMatch(/Already recalled/);
     expect((await board(ada)).earlier.unfinished).toBe(0);
+  });
+
+  it('a recalled unfinished task is settled: no more work, alerts or counts on the original', async () => {
+    const ada = await login('demo-ada');
+    const sso = await earlier(ada, 'SSO'); // blocked
+    const copy = (await request(app).post(`/api/tasks/${sso.id}/recall`).set(auth(ada)).send({}).expect(201)).body.task as Task;
+    const res = await request(app).post(`/api/tasks/${sso.id}/transitions`).set(auth(ada)).send({ action: 'unblock' }).expect(409);
+    expect(res.body.error.message).toContain(`DLG-${copy.seq}`);
+    expect((await board(ada)).blocked.map((t) => t.id)).not.toContain(sso.id);
+    const blocked = (await request(app).get('/api/history').query({ status: 'blocked' }).set(auth(ada)).expect(200)).body.rows as Array<{ task: Task }>;
+    expect(blocked.map((r) => r.task.id)).not.toContain(sso.id);
+  });
+});
+
+describe('blocked tasks wait on History → Blocked', () => {
+  it('lists blocked work from any day (today included), out of the lanes, and it comes back when unblocked', async () => {
+    const ada = await login('demo-ada');
+    const b = await board(ada);
+    const titles = b.blocked.map((t) => t.title);
+    expect(titles).toEqual(expect.arrayContaining(['Negotiate courier contract renewal', 'Integrate SSO for enterprise pilot'])); // today's and yesterday's
+
+    const rows = (await request(app).get('/api/history').query({ status: 'blocked' }).set(auth(ada)).expect(200)).body.rows as Array<{ task: Task }>;
+    expect(rows.map((r) => r.task.title).sort()).toEqual([...titles].sort());
+    expect(rows.every((r) => r.task.status === 'blocked')).toBe(true);
+    // "In motion" no longer includes blocked work.
+    const active = (await request(app).get('/api/history').query({ status: 'active' }).set(auth(ada)).expect(200)).body.rows as Array<{ task: Task }>;
+    expect(active.every((r) => r.task.status === 'in_progress')).toBe(true);
+
+    // Unblocking it puts it back in motion, on its own day.
+    const courier = rows.find((r) => r.task.title.startsWith('Negotiate courier'))!.task;
+    await request(app).post(`/api/tasks/${courier.id}/transitions`).set(auth(ada)).send({ action: 'unblock' }).expect(200);
+    expect((await board(ada)).blocked.map((t) => t.id)).not.toContain(courier.id);
+    expect((await board(ada)).tasks.find((t) => t.id === courier.id)?.status).toBe('in_progress');
+  });
+
+  it('staff see only their own blocked work, and work blocked on them', async () => {
+    const leo = await login('demo-leo'); // the SSO task is waiting on Leo
+    const tunde = await login('demo-tunde');
+    expect((await board(leo)).blocked.map((t) => t.title)).toEqual(['Integrate SSO for enterprise pilot']);
+    expect((await board(tunde)).blocked.map((t) => t.title)).toEqual(['Integrate SSO for enterprise pilot']);
+    expect((await board(await login('demo-sara'))).blocked).toEqual([]);
   });
 });

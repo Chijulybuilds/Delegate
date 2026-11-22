@@ -1,6 +1,7 @@
 import {
   availableActions,
   canRecall,
+  isSettledByRecall,
   canSeeTask,
   DEFAULT_ORG_SETTINGS,
   LANES,
@@ -224,9 +225,11 @@ export class WorkspaceService {
       day: { start: dayStart, timezone },
       // Earlier days live on History; everyone sees their own (the owner sees all of them).
       earlier: {
-        unfinished: before.filter((t) => !t.recalledToId && (t.status === 'open' || t.status === 'in_progress' || t.status === 'blocked')).length,
+        unfinished: before.filter((t) => !t.recalledToId && (t.status === 'open' || t.status === 'in_progress')).length,
         awaitingAudit: isManagerRole(ctx.role) ? before.filter((t) => !t.recalledToId && t.status === 'done').length : 0,
       },
+      // Blocked work from any day waits on History → Blocked until it's unblocked or recalled.
+      blocked: mine.filter((t) => t.status === 'blocked' && !t.recalledToId).sort((a, b) => (b.blockedAt ?? b.updatedAt).localeCompare(a.blockedAt ?? a.updatedAt)),
     };
   }
 
@@ -277,7 +280,8 @@ export class WorkspaceService {
     const q = f.q?.trim().toLowerCase().replace(/^#/, '');
     const from = f.from ? Date.parse(f.from) : null;
     const to = f.to ? Date.parse(f.to) : null;
-    const statuses = f.status === 'unfinished' ? ['open', 'in_progress', 'blocked'] : f.status ? (LANES.find((l) => l.id === f.status)?.statuses as readonly string[] | undefined) : undefined;
+    const statuses =
+      f.status === 'unfinished' ? ['open', 'in_progress', 'blocked'] : f.status === 'blocked' ? ['blocked'] : f.status ? (LANES.find((l) => l.id === f.status)?.statuses as readonly string[] | undefined) : undefined;
     const minutes = (hhmm?: string) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
     const fromMin = minutes(f.fromTime);
     const toMin = minutes(f.toTime);
@@ -313,12 +317,19 @@ export class WorkspaceService {
     return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize };
   }
 
-  /** History: every earlier task the viewer can see (all of them for the owner; their own for everyone else), newest first. */
+  /**
+   * History: every earlier task the viewer can see (all of them for the owner; their own for
+   * everyone else), newest first. A recalled task has moved on to its copy, so it leaves History.
+   * Blocked (status "blocked") lists blocked work from any day, today's included.
+   */
   async history(ctx: Ctx, f: TaskFilters, page = 1, pageSize = 60): Promise<HistoryResponse> {
     const org = await this.store.getOrg(ctx.orgId);
     const timezone = org?.timezone || 'UTC';
     const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
-    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => t.createdAt < dayStart && canSeeTask(ctx, t) && (!f.recallable || canRecall(ctx, t, dayStart)));
+    const anyDay = f.status === 'blocked';
+    const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter(
+      (t) => (anyDay || t.createdAt < dayStart) && !t.recalledToId && canSeeTask(ctx, t) && (!f.recallable || canRecall(ctx, t, dayStart)),
+    );
     const rows = this.filterRows(await this.describeTasks(ctx.orgId, tasks), f, (t) => t.createdAt, timezone);
     const start = (page - 1) * pageSize;
     return { rows: rows.slice(start, start + pageSize), total: rows.length, page, pageSize, timezone };
@@ -510,6 +521,7 @@ export class WorkspaceService {
   /** A person moving a task through the lifecycle (permissions enforced). */
   async transition(ctx: Ctx, id: string, action: TransitionAction, input: TransitionInput): Promise<TaskDetail> {
     const task = await this.getTaskForCtx(ctx, id);
+    await this.assertNotRecalled(task);
     const rule = TRANSITIONS[action];
     if (!rule.from.includes(task.status)) {
       throw new HttpError(409, `Cannot ${rule.label.toLowerCase()} a task that is ${task.status.replace('_', ' ')}`, 'invalid_transition');
@@ -529,7 +541,7 @@ export class WorkspaceService {
    */
   async systemTransition(orgId: string, taskId: string, action: TransitionAction, input: TransitionInput & { proofs?: never }, opts: { source: string; proofs?: SystemProof[] }) {
     const task = await this.getTaskForCtx({ orgId }, taskId);
-    if (!TRANSITIONS[action].from.includes(task.status)) return task;
+    if (!TRANSITIONS[action].from.includes(task.status) || isSettledByRecall(task)) return task;
     return this.applyTransition(task, action, input, {
       actorId: null,
       authorId: task.assigneeId,
@@ -738,6 +750,13 @@ export class WorkspaceService {
   private async emit(evt: { type: DomainEvent['type'] } & Record<string, unknown> & { task: Task }) {
     const org = await this.store.getOrg(evt.task.orgId);
     if (org) await this.notifier.dispatch({ ...evt, org } as DomainEvent);
+  }
+
+  /** Work on a recalled task happens on its copy. */
+  private async assertNotRecalled(task: Task) {
+    if (!isSettledByRecall(task)) return;
+    const copy = task.recalledToId ? await this.store.getTask(task.recalledToId) : null;
+    throw conflict(`This task was recalled${copy ? ` as ${taskRef(copy.seq)}` : ''}. Carry on with that one.`);
   }
 
   private async assertDepartment(orgId: string, departmentId: string) {

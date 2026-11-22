@@ -1,4 +1,4 @@
-import { canSeeTask, hoursBetween, type Member, type MemberRole, type StandupBrief, type Task, type VelocityResponse, type VelocityRow } from '@delegate/shared';
+import { canSeeTask, hoursBetween, isSettledByRecall, type Member, type MemberRole, type StandupBrief, type Task, type VelocityResponse, type VelocityRow } from '@delegate/shared';
 import type { Store } from '../store/types.js';
 
 const DAY = 86_400_000;
@@ -47,7 +47,9 @@ export class MetricsService {
 
   /** Everyone but the owner gets numbers for the tasks they can see (their own and those they handed out). */
   private async scoped(orgId: string, viewer?: Viewer) {
-    const [all, everyone] = await Promise.all([this.store.listTasks({ orgId }), this.store.listMembers(orgId)]);
+    const [everything, everyone] = await Promise.all([this.store.listTasks({ orgId }), this.store.listMembers(orgId)]);
+    // Recalled originals carry on as their copies: count each piece of work once.
+    const all = everything.filter((t) => !isSettledByRecall(t));
     if (!viewer || viewer.role === 'owner') return { tasks: all, members: everyone };
     const tasks = all.filter((t) => canSeeTask(viewer, t));
     const people = new Set([viewer.userId, ...tasks.map((t) => t.assigneeId)]);
