@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { MEMBER_ROLES, orgForRole, TASK_PRIORITIES, taskRef, type TransitionAction } from '@delegate/shared';
+import { MEMBER_ROLES, orgForRole, TASK_PRIORITIES, TASK_SIZES, taskRef, type TransitionAction } from '@delegate/shared';
 import { badRequest } from '../lib/errors.js';
 import { standupToText, type MetricsService } from '../services/metrics.js';
 import type { AccountService } from '../services/account.js';
@@ -21,6 +21,7 @@ const createTask = z.object({
   assigneeId: id.optional(),
   departmentId: id.nullable().optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
+  size: z.enum(TASK_SIZES).nullable().optional(),
   dueAt: isoDate.nullable().optional(),
 });
 
@@ -60,7 +61,9 @@ export function workspaceRoutes(deps: {
   r.get('/workspace', async (req, res) => {
     const { orgId, org, role, departmentId } = req.member!;
     const [members, departments, entitlements] = await Promise.all([store.listMembers(orgId), store.listDepartments(orgId), billing.entitlements(orgId)]);
-    res.json({ org: orgForRole(org, role), members, departments, entitlements, me: { userId: req.user!.id, role, departmentId } });
+    // Optional features that wait on a database update (the app works without them meanwhile).
+    const features = { taskSize: store.features?.().taskSize ?? true };
+    res.json({ org: orgForRole(org, role), members, departments, entitlements, features, me: { userId: req.user!.id, role, departmentId } });
   });
 
   r.patch('/workspace', async (req, res) => {

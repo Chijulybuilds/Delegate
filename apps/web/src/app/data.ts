@@ -33,6 +33,8 @@ export interface WorkspaceData {
   members: Member[];
   departments: Department[];
   entitlements: Entitlements;
+  /** Features waiting on a database update (absent on older servers = available). */
+  features?: { taskSize: boolean };
   me: { userId: string; role: MemberRole; departmentId: string | null };
 }
 

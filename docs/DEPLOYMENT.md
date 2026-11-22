@@ -83,7 +83,7 @@ curl -fsS -H "Authorization: Bearer YOUR_CRON_SECRET" https://YOUR-DOMAIN/api/cr
 ## 4. Go-live checklist
 
 **Core**
-- [ ] All five Supabase migrations ran (oldest first); `/api/health` says `"store":"supabase"`.
+- [ ] All six Supabase migrations ran (oldest first); `/api/health` says `"store":"supabase"`.
 - [ ] Google sign-in works on the production domain. The Google app is **published** (not *Testing*).
 - [ ] Email sign-up works end to end: custom SMTP is set (Resend), the confirmation email arrives, and **Forgot password?** sends a working link (see SETUP.md → *Email and password sign-in*).
 - [ ] `/admin` logs in with your hashed password. The dev credentials are refused.

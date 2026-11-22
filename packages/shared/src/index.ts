@@ -14,6 +14,24 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
+/**
+ * How big a task is. It keeps Insights fair: a quick call and a day of video editing aren't judged
+ * by the same clock. `effortHours` is the work it typically takes (what "work done" adds up);
+ * `fairHours` is a reasonable turnaround when no deadline was set; `suggestHours` is the deadline
+ * the task form proposes for it.
+ */
+export const TASK_SIZES = ['xs', 's', 'm', 'l', 'xl'] as const;
+export type TaskSize = (typeof TASK_SIZES)[number];
+export const SIZE_META: Record<TaskSize, { label: string; hint: string; effortHours: number; fairHours: number; suggestHours: number }> = {
+  xs: { label: 'Quick', hint: 'Minutes: a call, a text, a quick reply', effortHours: 0.25, fairHours: 4, suggestHours: 2 },
+  s: { label: 'Small', hint: 'About an hour', effortHours: 1, fairHours: 8, suggestHours: 4 },
+  m: { label: 'Medium', hint: 'A few hours', effortHours: 3, fairHours: 24, suggestHours: 8 },
+  l: { label: 'Large', hint: 'About a day of work, like editing a 1-hour video', effortHours: 6, fairHours: 48, suggestHours: 30 },
+  xl: { label: 'Huge', hint: 'Several days of work', effortHours: 16, fairHours: 120, suggestHours: 72 },
+};
+/** Tasks without a size (older ones, or from chat commands) count as Medium. */
+export const sizeOf = (task: { size?: TaskSize | null }): TaskSize => task.size ?? 'm';
+
 export const MEMBER_ROLES = ['owner', 'manager', 'member'] as const;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 
@@ -223,6 +241,8 @@ export interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
+  /** How big it is (null = not set, counts as Medium). */
+  size?: TaskSize | null;
   assigneeId: string;
   createdById: string;
   departmentId: string | null;
@@ -354,9 +374,16 @@ export interface VelocityRow {
   avatarUrl: string | null;
   completed: number;
   approved: number;
-  /** Average hours from creation (Red) to submission (Green). */
+  /** Average hours from being given the task to executing it, not counting time blocked on someone else. */
   avgHoursToGreen: number | null;
+  /** Share delivered on time: by the deadline (extended by time blocked on others), or without one, within a fair time for the task's size. */
   onTimeRate: number | null;
+  /** Share approved at the first audit, without changes requested (of the audited ones). */
+  firstTimeRate: number | null;
+  /** The work delivered, in typical hours for the tasks' sizes. */
+  workHours: number;
+  /** 0–100: on time (70%) and approved first time (30%), eased toward the team's score when there are only a few tasks. Null with nothing executed. */
+  fairScore: number | null;
   openNow: number;
   blockedNow: number;
 }
@@ -367,6 +394,8 @@ export interface VelocityResponse {
     completed: number;
     avgHoursToGreen: number | null;
     onTimeRate: number | null;
+    firstTimeRate: number | null;
+    workHours: number;
     openNow: number;
     blockedNow: number;
     awaitingAudit: number;

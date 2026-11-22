@@ -23,6 +23,7 @@ import {
   type Task,
   type TaskDetail,
   type TaskPriority,
+  type TaskSize,
   type TaskProof,
   type TaskSource,
   type TaskStatus,
@@ -66,6 +67,8 @@ export interface CreateTaskInput {
   assigneeId?: string;
   departmentId?: string | null;
   priority?: TaskPriority;
+  /** How big it is (Quick → Huge); null/absent counts as Medium. */
+  size?: TaskSize | null;
   dueAt?: string | null;
 }
 
@@ -368,6 +371,7 @@ export class WorkspaceService {
       description: (input.description ?? '').trim().slice(0, 4000),
       status: 'open',
       priority: input.priority ?? 'medium',
+      size: input.size ?? null,
       assigneeId,
       createdById: extra.createdById ?? ctx.userId,
       departmentId: departmentId ?? null,
@@ -414,7 +418,7 @@ export class WorkspaceService {
     const dueAt = opts.dueAt !== undefined ? opts.dueAt : this.dueTodayLike(from, dayStart, tz);
     const task = await this.createTask(
       ctx,
-      { title: from.title, description: from.description, priority: from.priority, assigneeId, departmentId: from.departmentId, dueAt: dueAt ?? undefined },
+      { title: from.title, description: from.description, priority: from.priority, size: from.size ?? null, assigneeId, departmentId: from.departmentId, dueAt: dueAt ?? undefined },
       'app',
       { createdById, recalledFromId: from.id },
     );
@@ -503,6 +507,7 @@ export class WorkspaceService {
     if (patch.title !== undefined) next.title = patch.title.trim();
     if (patch.description !== undefined) next.description = patch.description.trim();
     if (patch.priority !== undefined) next.priority = patch.priority;
+    if (patch.size !== undefined) next.size = patch.size;
     if (patch.dueAt !== undefined) {
       next.dueAt = patch.dueAt;
       next.overdueAlertedAt = null;

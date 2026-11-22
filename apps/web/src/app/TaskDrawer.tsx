@@ -1,4 +1,4 @@
-import { availableActions, canReassign, canRecall, isManagerRole, taskRef, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
+import { availableActions, canReassign, canRecall, isManagerRole, SIZE_META, sizeOf, taskRef, TRANSITIONS, type LedgerEvent, type TaskProof, type TransitionAction } from '@delegate/shared';
 import { ArrowRight, ArrowRightLeft, Download, FileText, HardDrive, Link2, Paperclip, RotateCcw, Send, ShieldCheck, Sparkles, StickyNote, X } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
@@ -13,7 +13,7 @@ import { clock, dueLabel, timeAgo, toLocalInput } from '../lib/format';
 import { memberName, useBoard, useComment, useMarkTaskRead, useNotifications, useTaskDetail, useTransition, useUpdateTask, type WorkspaceData } from './data';
 import { ReassignModal } from './ReassignModal';
 import { RecallModal } from './RecallModal';
-import { memberOptions, priorityOptions } from './options';
+import { memberOptions, priorityOptions, sizeOptions } from './options';
 
 export function TaskDrawer({ taskId, intent, onClose, ws }: { taskId: string | null; intent: string | null; onClose: () => void; ws: WorkspaceData }) {
   return (
@@ -193,6 +193,15 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
                 <span className="font-medium capitalize">{task.priority}</span>
               )}
             </Meta>
+            {ws.features?.taskSize !== false && (
+              <Meta label="Size">
+                {canEdit ? (
+                  <Select size="inline" value={sizeOf(task)} onChange={(v) => edit({ size: v })} options={sizeOptions} aria-label="Size" data-testid="drawer-size" />
+                ) : (
+                  <span className="font-medium">{SIZE_META[sizeOf(task)].label}</span>
+                )}
+              </Meta>
+            )}
             <Meta label="Due">
               {canEdit ? (
                 <DateTimePicker
@@ -212,7 +221,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
                 {dept?.name ?? '—'}
               </span>
             </Meta>
-            <Meta label="Time to green">
+            <Meta label="Time to green" className={ws.features?.taskSize !== false ? 'col-span-2' : undefined}>
               <span className="font-medium">
                 {task.submittedAt ? `${((new Date(task.submittedAt).getTime() - new Date(task.createdAt).getTime()) / 3_600_000).toFixed(1)}h` : task.startedAt ? 'In motion' : 'Not started'}
               </span>
@@ -272,9 +281,9 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
   );
 }
 
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
+function Meta({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className="bg-paper px-4 py-3">
+    <div className={cx('bg-paper px-4 py-3', className)}>
       <dt className="text-xs text-faint">{label}</dt>
       <dd className="mt-1 truncate">{children}</dd>
     </div>
