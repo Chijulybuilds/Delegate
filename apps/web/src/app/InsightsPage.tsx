@@ -1,6 +1,7 @@
-import { useSearchParams } from 'react-router';
+import { Navigate, useSearchParams } from 'react-router';
 import { Segmented } from '../components/ui';
 import { PageHeader } from './AppShell';
+import { useWorkspace } from './data';
 import StandupPage from './StandupPage';
 import VelocityPage from './VelocityPage';
 
@@ -8,6 +9,9 @@ import VelocityPage from './VelocityPage';
 export default function InsightsPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'standup' ? 'standup' : 'velocity';
+  const ws = useWorkspace().data;
+  // Insights compare teammates, so they're for the owner only.
+  if (ws && ws.me.role !== 'owner') return <Navigate to="/app" replace />;
   return (
     <div>
       <PageHeader

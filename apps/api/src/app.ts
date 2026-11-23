@@ -16,7 +16,7 @@ import { publicRoutes } from './routes/public.js';
 import { oauthRoutes, saasRoutes } from './routes/saas.js';
 import { workspaceRoutes } from './routes/workspace.js';
 import { AdminService } from './services/admin.js';
-import { disabledVerifier, type ProofVerifier } from './services/ai.js';
+import { createSizer, disabledVerifier, type ProofVerifier, type TaskSizer } from './services/ai.js';
 import { AutomationService } from './services/automation.js';
 import { BillingService } from './services/billing.js';
 import type { Http } from './services/channels.js';
@@ -33,6 +33,8 @@ export interface AppDeps {
   config: AppConfig;
   store: Store;
   ai?: ProofVerifier;
+  /** Estimates task sizes (AI when configured). Injected in tests. */
+  sizer?: TaskSizer;
   mailer?: Mailer;
   /** Outbound HTTP for providers (Stripe, Paystack, Slack, Meta, Google). Injected in tests. */
   http?: Http;
@@ -49,7 +51,8 @@ export interface Services {
   notifier: Notifier;
 }
 
-export function createServices({ config, store, ai = disabledVerifier, mailer = createMailer(config), http = fetch }: AppDeps) {
+export function createServices(deps: AppDeps) {
+  const { config, store, ai = disabledVerifier, mailer = createMailer(config), http = fetch } = deps;
   const secrets = new Secrets(config.encryptionKey);
   const billing = new BillingService(store, config, http, async (orgId, summary) => {
     const owners = (await store.listMembers(orgId)).filter((m) => m.role === 'owner');
@@ -64,7 +67,8 @@ export function createServices({ config, store, ai = disabledVerifier, mailer = 
   const automation = new AutomationService(store, workspace, notifier, billing, metrics, mailer);
   const admin = new AdminService(store);
   const account = new AccountService(store, billing);
-  return { secrets, billing, notifier, drive, workspace, commands, integrations, metrics, automation, admin, mailer, ai, account };
+  const sizer = deps.sizer ?? createSizer(config);
+  return { secrets, billing, notifier, drive, workspace, commands, integrations, metrics, automation, admin, mailer, ai, account, sizer };
 }
 
 export function createApp(deps: AppDeps): Express & { services: Services } {
@@ -155,7 +159,7 @@ export function createApp(deps: AppDeps): Express & { services: Services } {
   const member = Router();
   member.use(requireUser(store, verifier), requireMember(store));
   member.use(saasRoutes({ store, billing: s.billing, integrations: s.integrations, automation: s.automation, workspace: s.workspace, drive: s.drive }));
-  member.use(workspaceRoutes({ store, workspace: s.workspace, metrics: s.metrics, billing: s.billing, account: s.account }));
+  member.use(workspaceRoutes({ store, workspace: s.workspace, metrics: s.metrics, billing: s.billing, account: s.account, sizer: s.sizer }));
   app.use('/api', member);
   app.use('/api', notFoundHandler);
 

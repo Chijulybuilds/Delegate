@@ -76,10 +76,9 @@ describe('who sees which tasks', () => {
     const adaFeed = (await request(app).get('/api/feed').set(auth(ada)).expect(200)).body.events as LedgerEvent[];
     expect(adaFeed.some((e) => e.taskId === secret.id)).toBe(true);
 
-    const standup = (await request(app).get('/api/standup').set(auth(maya)).expect(200)).body.brief;
-    expect(JSON.stringify(standup)).not.toContain('Confidential: salary review');
-    const velocity = (await request(app).get('/api/metrics/velocity').set(auth(maya)).expect(200)).body;
-    expect(velocity.rows.every((r: { userId: string }) => r.userId === 'demo-maya' || [...store.tasks.values()].some((t) => t.assigneeId === r.userId && t.createdById === 'demo-maya'))).toBe(true);
+    await request(app).get('/api/standup').set(auth(maya)).expect(403);
+    // Insights compare teammates: only the owner sees them.
+    await request(app).get('/api/metrics/velocity').set(auth(maya)).expect(403);
   });
 });
 

@@ -194,7 +194,7 @@ function DrawerBody({ taskId, intent, onClose, ws }: { taskId: string; intent: s
               )}
             </Meta>
             {ws.features?.taskSize !== false && (
-              <Meta label="Size">
+              <Meta label={task.size ? 'Size' : 'Size · estimated'}>
                 {canEdit ? (
                   <Select size="inline" value={sizeOf(task)} onChange={(v) => edit({ size: v })} options={sizeOptions} aria-label="Size" data-testid="drawer-size" />
                 ) : (

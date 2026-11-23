@@ -2,7 +2,8 @@ import { Router, type Request } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { MEMBER_ROLES, orgForRole, TASK_PRIORITIES, TASK_SIZES, taskRef, type TransitionAction } from '@delegate/shared';
-import { badRequest } from '../lib/errors.js';
+import { badRequest, conflict, forbidden } from '../lib/errors.js';
+import type { TaskSizer } from '../services/ai.js';
 import { standupToText, type MetricsService } from '../services/metrics.js';
 import type { AccountService } from '../services/account.js';
 import type { BillingService } from '../services/billing.js';
@@ -52,8 +53,13 @@ export function workspaceRoutes(deps: {
   metrics: MetricsService;
   billing: BillingService;
   account: AccountService;
+  sizer: TaskSizer;
 }) {
-  const { store, workspace, metrics, billing } = deps;
+  const { store, workspace, metrics, billing, sizer } = deps;
+  /** Insights compare teammates, so only the owner sees them. */
+  const ownerOnly = (req: Request) => {
+    if (req.member!.role !== 'owner') throw forbidden('Insights are for the workspace owner');
+  };
   const r = Router();
 
   /* ------------------------------ Workspace ------------------------------ */
@@ -251,12 +257,27 @@ export function workspaceRoutes(deps: {
   });
 
   r.get('/metrics/velocity', async (req, res) => {
-    const q = z.object({ days: z.coerce.number().int().refine((d) => [7, 14, 30].includes(d), 'days must be 7, 14 or 30').default(14) }).parse(req.query);
+    ownerOnly(req);
+    const q = z
+      .object({
+        days: z.coerce.number().int().refine((d) => [7, 14, 30].includes(d), 'days must be 7, 14 or 30').default(14),
+        day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'day must be YYYY-MM-DD').optional(),
+        size: z.enum(TASK_SIZES).optional(),
+      })
+      .parse(req.query);
     const ent = await billing.entitlements(req.member!.orgId);
-    res.json(await metrics.velocity(req.member!.orgId, Math.min(q.days, ent.velocityDays), ctxOf(req)));
+    res.json(await metrics.velocity(req.member!.orgId, Math.min(q.days, ent.velocityDays), ctxOf(req), { day: q.day, size: q.size, maxDays: ent.velocityDays }));
+  });
+
+  /** Sizes every task nobody sized (AI when it's set up, else the word rules), so complexity counts everywhere. */
+  r.post('/metrics/size-tasks', async (req, res) => {
+    ownerOnly(req);
+    if (store.features?.().taskSize === false) throw conflict('Run supabase/migrations/20261122000000_task_size.sql first (Supabase → SQL Editor), then try again.');
+    res.json(await metrics.sizeUnsized(req.member!.orgId, sizer));
   });
 
   r.get('/standup', async (req, res) => {
+    ownerOnly(req);
     const brief = await metrics.standup(req.member!.orgId, new Date(), ctxOf(req));
     res.json({ brief, text: standupToText(brief) });
   });

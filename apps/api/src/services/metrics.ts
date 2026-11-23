@@ -1,5 +1,7 @@
-import { canSeeTask, isSettledByRecall, SIZE_META, sizeOf, type LedgerEvent, type Member, type MemberRole, type StandupBrief, type Task, type VelocityResponse, type VelocityRow } from '@delegate/shared';
+import { canSeeTask, isSettledByRecall, SIZE_META, sizeOf, TASK_SIZES, type LedgerEvent, type TaskSize, type Member, type MemberRole, type StandupBrief, type Task, type VelocityResponse, type VelocityRow } from '@delegate/shared';
 import type { Store } from '../store/types.js';
+import { badRequest } from '../lib/errors.js';
+import type { TaskSizer } from './ai.js';
 
 const DAY = 86_400_000;
 
@@ -42,9 +44,9 @@ type Viewer = { userId: string; role: MemberRole };
 
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const HOUR = 3_600_000;
-/** How many tasks' worth of "team average" a person's score starts from, so 1–2 lucky tasks don't top the board. */
-const PRIOR_TASKS = 3;
-const ON_TIME_WEIGHT = 0.7;
+/** Late work still counts, a little less; so does work the audit sent back. */
+const LATE_CREDIT = 0.75;
+const SENT_BACK_CREDIT = 0.85;
 
 /** One executed task, judged fairly: against its own deadline or size, from when it became theirs, minus time blocked on others. */
 interface Delivery {
@@ -54,7 +56,11 @@ interface Delivery {
   onTime: boolean;
   /** null = not audited yet; true = approved without changes requested. */
   firstTime: boolean | null;
+  size: TaskSize;
+  /** Typical hours of work for its size. */
   effort: number;
+  /** The effort it earns: full when on time and right first time, less when late or sent back. */
+  credit: number;
 }
 
 /** Hours of [a, b] that fall inside [lo, hi]. */
@@ -88,16 +94,9 @@ export function judgeDelivery(task: Task, events: LedgerEvent[]): Delivery {
   const onTime = due !== null && due > start ? end <= due + blockedMs : turnaround <= size.fairHours;
   const sentBack = evs.some((e) => e.type === 'task.changes_requested');
   const audited = task.status === 'approved' || sentBack;
-  return { task, turnaround, onTime, firstTime: audited ? !sentBack : null, effort: size.effortHours };
-}
-
-/** 0–100 from a set of deliveries (null with none). */
-function rawScore(ds: Delivery[]): number | null {
-  if (!ds.length) return null;
-  const onTime = ds.filter((d) => d.onTime).length / ds.length;
-  const audited = ds.filter((d) => d.firstTime !== null);
-  const firstTime = audited.length ? audited.filter((d) => d.firstTime).length / audited.length : null;
-  return 100 * (firstTime === null ? onTime : ON_TIME_WEIGHT * onTime + (1 - ON_TIME_WEIGHT) * firstTime);
+  const firstTime = audited ? !sentBack : null;
+  const credit = size.effortHours * (onTime ? 1 : LATE_CREDIT) * (firstTime === false ? SENT_BACK_CREDIT : 1);
+  return { task, turnaround, onTime, firstTime, size: sizeOf(task), effort: size.effortHours, credit };
 }
 
 export class MetricsService {
@@ -131,36 +130,60 @@ export class MetricsService {
   }
 
   /**
-   * The leaderboard, made fair: every task is judged against its own deadline, or a fair time for
-   * its size (a quick call vs. a day of editing), from when it became the person's, not counting
-   * time blocked on others; approval without changes counts too. How much work someone gets depends
-   * on what they're given, so it's shown ("work done") but doesn't change the ranking.
+   * Insights for the owner. The leaderboard ranks by impact: the work each person delivered,
+   * weighted by complexity (a day of video editing counts for far more than a quick call), with
+   * a little less credit for work that was late (against its deadline, or a fair time for its size)
+   * or sent back at the audit. The clock starts when a task became theirs and pauses while it's
+   * blocked on someone else. Pick a day (any day the plan keeps) to see just that day's numbers;
+   * pick a size to compare people on that kind of work only.
    */
-  async velocity(orgId: string, windowDays: number, viewer?: Viewer): Promise<VelocityResponse> {
+  async velocity(orgId: string, windowDays: number, viewer?: Viewer, opts: { day?: string; size?: TaskSize; maxDays?: number } = {}): Promise<VelocityResponse> {
+    const org = await this.store.getOrg(orgId);
+    const timezone = org?.timezone || 'UTC';
     const { tasks, members } = await this.scoped(orgId, viewer);
-    const since = Date.now() - windowDays * DAY;
-    const shipped = tasks.filter((t) => t.submittedAt && new Date(t.submittedAt).getTime() >= since);
 
+    // Every day the plan keeps, in the workspace's time zone; the chart shows the last `windowDays`.
+    const maxDays = Math.max(windowDays, opts.maxDays ?? windowDays);
+    const keyOf = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+    const todayStart = startOfDayInTz(new Date(), timezone);
+    const starts = [todayStart];
+    for (let i = 1; i < maxDays; i++) starts.unshift(startOfDayInTz(new Date(starts[0]!.getTime() - 12 * HOUR), timezone));
+    const tomorrow = startOfDayInTz(new Date(todayStart.getTime() + 36 * HOUR), timezone);
+    const allDays = starts.map((st, i) => ({ date: keyOf.format(new Date(st.getTime() + HOUR)), start: st.getTime(), end: (starts[i + 1] ?? tomorrow).getTime() }));
+    const buckets = allDays.slice(-windowDays);
+    const picked = opts.day ? allDays.find((b) => b.date === opts.day) : null;
+    if (opts.day && !picked) throw badRequest(`Pick a day within the last ${maxDays} days`);
+    const range = picked ?? { start: buckets[0]!.start, end: tomorrow.getTime() };
+
+    const ofSize = (t: Task) => !opts.size || sizeOf(t) === opts.size;
+    const executedIn = (lo: number, hi: number) =>
+      tasks.filter((t) => {
+        const at = t.submittedAt ? Date.parse(t.submittedAt) : NaN;
+        return at >= lo && at < hi && ofSize(t);
+      });
+    const inPlan = executedIn(allDays[0]!.start, tomorrow.getTime());
+    const shipped = executedIn(range.start, range.end);
+
+    // The ledger behind the fair clock.
     const ids = new Set(shipped.map((t) => t.id));
-    const earliest = shipped.reduce((min, t) => (t.createdAt < min ? t.createdAt : min), new Date(since).toISOString());
+    const earliest = Math.min(range.start, ...shipped.map((t) => Date.parse(t.createdAt)));
     const byTask = new Map<string, LedgerEvent[]>();
-    if (shipped.length) {
-      for (const e of await this.eventsSince(orgId, earliest)) {
-        if (!e.taskId || !ids.has(e.taskId)) continue;
-        byTask.set(e.taskId, [...(byTask.get(e.taskId) ?? []), e]);
-      }
+    const events = shipped.length ? await this.eventsSince(orgId, new Date(earliest).toISOString()) : [];
+    for (const e of events) {
+      if (!e.taskId || !ids.has(e.taskId)) continue;
+      byTask.set(e.taskId, [...(byTask.get(e.taskId) ?? []), e]);
     }
     const deliveries = shipped.map((t) => judgeDelivery(t, byTask.get(t.id) ?? []));
-    const teamScore = rawScore(deliveries);
     const rate = (ds: Delivery[], pick: (d: Delivery) => boolean | null) => {
       const judged = ds.filter((d) => pick(d) !== null);
       return judged.length ? judged.filter((d) => pick(d)).length / judged.length : null;
     };
-    const sum = (ds: Delivery[]) => Math.round(ds.reduce((a, d) => a + d.effort, 0) * 10) / 10;
+    const round1 = (x: number) => Math.round(x * 10) / 10;
+    const total = (ds: Delivery[], f: (d: Delivery) => number) => round1(ds.reduce((a, d) => a + f(d), 0));
 
     const rowFor = (m: Member): VelocityRow => {
       const mine = deliveries.filter((d) => d.task.assigneeId === m.userId);
-      const raw = rawScore(mine);
+      const sizeMix = Object.fromEntries(TASK_SIZES.map((z) => [z, mine.filter((d) => d.size === z).length])) as Record<TaskSize, number>;
       return {
         userId: m.userId,
         fullName: m.fullName,
@@ -170,41 +193,44 @@ export class MetricsService {
         avgHoursToGreen: avg(mine.map((d) => d.turnaround)),
         onTimeRate: rate(mine, (d) => d.onTime),
         firstTimeRate: rate(mine, (d) => d.firstTime),
-        workHours: sum(mine),
-        // Eased toward the team's score until there are a few tasks to go on.
-        fairScore: raw === null || teamScore === null ? null : Math.round((mine.length * raw + PRIOR_TASKS * teamScore) / (mine.length + PRIOR_TASKS)),
+        workHours: total(mine, (d) => d.effort),
+        impact: total(mine, (d) => d.credit),
+        impactScore: null,
+        sizeMix,
         openNow: tasks.filter((t) => t.assigneeId === m.userId && (t.status === 'open' || t.status === 'in_progress')).length,
         blockedNow: tasks.filter((t) => t.assigneeId === m.userId && t.status === 'blocked').length,
       };
     };
+    const rows = members.map(rowFor);
+    const top = Math.max(0, ...rows.map((r) => r.impact));
+    for (const r of rows) r.impactScore = r.completed && top > 0 ? Math.round((100 * r.impact) / top) : null;
+    // Most impact first; people with nothing executed sink to the bottom.
+    rows.sort((a, b) => b.impact - a.impact || (b.onTimeRate ?? -1) - (a.onTimeRate ?? -1) || b.completed - a.completed);
 
-    const rows = members
-      .map(rowFor)
-      // Fairest first; people with nothing executed yet sink to the bottom.
-      .sort((a, b) => (b.fairScore ?? -1) - (a.fairScore ?? -1) || b.workHours - a.workHours);
-
-    const daily: VelocityResponse['daily'] = [];
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    for (let i = windowDays - 1; i >= 0; i--) {
-      const start = today.getTime() - i * DAY;
-      daily.push({
-        date: new Date(start).toISOString().slice(0, 10),
-        completed: shipped.filter((t) => {
-          const ts = new Date(t.submittedAt!).getTime();
-          return ts >= start && ts < start + DAY;
-        }).length,
+    const dayOf = (t: Task) => allDays.find((b) => Date.parse(t.submittedAt!) >= b.start && Date.parse(t.submittedAt!) < b.end)?.date;
+    const daily = buckets.map((b) => {
+      const done = inPlan.filter((t) => {
+        const at = Date.parse(t.submittedAt!);
+        return at >= b.start && at < b.end;
       });
-    }
+      return { date: b.date, completed: done.length, workHours: round1(done.reduce((a, t) => a + SIZE_META[sizeOf(t)].effortHours, 0)) };
+    });
 
     return {
       windowDays,
+      day: picked?.date ?? null,
+      size: opts.size ?? null,
+      timezone,
+      estimated: shipped.filter((t) => !t.size).length,
+      firstDay: allDays[0]!.date,
+      activeDays: [...new Set(inPlan.map(dayOf).filter((d): d is string => !!d))].sort(),
       team: {
         completed: shipped.length,
         avgHoursToGreen: avg(deliveries.map((d) => d.turnaround)),
         onTimeRate: rate(deliveries, (d) => d.onTime),
         firstTimeRate: rate(deliveries, (d) => d.firstTime),
-        workHours: sum(deliveries),
+        workHours: total(deliveries, (d) => d.effort),
+        impact: total(deliveries, (d) => d.credit),
         openNow: tasks.filter((t) => t.status === 'open' || t.status === 'in_progress').length,
         blockedNow: tasks.filter((t) => t.status === 'blocked').length,
         awaitingAudit: tasks.filter((t) => t.status === 'done').length,
@@ -212,6 +238,21 @@ export class MetricsService {
       rows,
       daily,
     };
+  }
+
+  /** Gives every unsized task a size (AI when it's set up, else the word rules), so it's visible and editable. */
+  async sizeUnsized(orgId: string, sizer: TaskSizer, limit = 300): Promise<{ sized: number; remaining: number; method: TaskSizer['method'] }> {
+    const unsized = (await this.store.listTasks({ orgId })).filter((t) => !t.size && !isSettledByRecall(t));
+    const batch = unsized.slice(0, limit);
+    const sizes = await sizer.estimate(batch.map((t) => ({ id: t.id, title: t.title, description: t.description })));
+    let sized = 0;
+    for (const t of batch) {
+      const size = sizes.get(t.id);
+      if (!size) continue;
+      await this.store.updateTask(t.id, { size });
+      sized++;
+    }
+    return { sized, remaining: unsized.length - sized, method: sizer.method };
   }
 
   async standup(orgId: string, now = new Date(), viewer?: Viewer): Promise<StandupBrief> {
