@@ -29,8 +29,42 @@ export const SIZE_META: Record<TaskSize, { label: string; hint: string; effortHo
   l: { label: 'Large', hint: 'About a day of work, like editing a 1-hour video', effortHours: 6, fairHours: 48, suggestHours: 30 },
   xl: { label: 'Huge', hint: 'Several days of work', effortHours: 16, fairHours: 120, suggestHours: 72 },
 };
-/** Tasks without a size (older ones, or from chat commands) count as Medium. */
-export const sizeOf = (task: { size?: TaskSize | null }): TaskSize => task.size ?? 'm';
+
+/*
+ * Estimating a size from the words, for tasks nobody sized (older ones, or tasks from Slack,
+ * WhatsApp or playbooks). The leading verb says most ("call…", "send…" are quick; "edit…",
+ * "design…" take a day); some nouns raise it ("video", "website"). Unknown wording counts as
+ * Medium. The task form uses this to pre-pick a size, and the AI estimate (when it's set up)
+ * refines it for older tasks.
+ */
+const VERB_SIZE: Array<[TaskSize, RegExp]> = [
+  ['xs', /^(call|phone|ring|text|sms|message|whatsapp|dm|reply( to)?|respond( to)?|ping|remind|notify|tell|ask|confirm|send|inform|greet|thank)\b/],
+  ['s', /^(email|e-mail|mail|upload|share|post|forward|book|order|print|buy|purchase|pay|schedule|collate|list|copy|download|submit|sign|renew|register|fill( in| out)?|pick up|drop off|reserve|collect)\b/],
+  ['xl', /^(build|develop|launch|migrate|implement|integrate|rebuild|redesign|overhaul|set up (a|the|our) (new )?(website|app|system|platform))\b/],
+  ['l', /^(edit|record|shoot|film|produce|design|draft|analy[sz]e|research|reconcile|plan|train|storyboard|translate|transcribe|animate|compose|choreograph|rehearse|paint|write (a |the )?(report|proposal|article|script|plan|book|chapter|curriculum))\b/],
+  ['m', /^(review|update|fix|set ?up|configure|clean( up)?|compile|negotiate|coordinate|organi[sz]e|check|count|follow( |-)?up|interview|visit|deliver|create|do|prepare|write|meet|arrange|test|qa|audit|resolve|finali[sz]e|clip|make|cook|decorate|install|repair|move|sort)\b/],
+];
+const HEAVY_NOUNS: Array<[TaskSize, RegExp]> = [
+  ['xl', /\b(website|web ?site|mobile app|platform|documentary|curriculum|guidelines|campaign strategy|whole (?:system|building))\b/],
+  ['l', /\b(video|film|footage|1[- ]?(?:hour|hr)|full[- ]day|report|proposal|presentation|deck|storyboard|album|brochure|magazine|research)\b/],
+  ['m', /\b(flyer|poster|banner|graphic|artwork|slides|article|newsletter|meeting|tickets|inventory|spreadsheet)\b/],
+];
+const SIZE_RANK: Record<TaskSize, number> = { xs: 0, s: 1, m: 2, l: 3, xl: 4 };
+
+export function estimateSize(title: string, description = ''): TaskSize {
+  const head = title.trim().toLowerCase().replace(/^(please|pls|kindly|help me|go and|go to|quickly)\s+/, '');
+  const text = `${head} ${description.toLowerCase()}`;
+  const verb = VERB_SIZE.find(([, re]) => re.test(head))?.[0] ?? null;
+  const noun = HEAVY_NOUNS.find(([, re]) => re.test(text))?.[0] ?? null;
+  // Quick verbs keep quick tasks quick ("send the video link" is still a quick send) — at most Small.
+  if (verb === 'xs' || verb === 's') return noun && SIZE_RANK[noun] >= SIZE_RANK.l && verb === 's' ? 's' : verb;
+  if (verb && noun) return SIZE_RANK[noun] > SIZE_RANK[verb] ? noun : verb;
+  return verb ?? noun ?? 'm';
+}
+
+/** A task's size: the one set on it, or else estimated from its words. */
+export const sizeOf = (task: { size?: TaskSize | null; title?: string; description?: string }): TaskSize =>
+  task.size ?? (task.title ? estimateSize(task.title, task.description) : 'm');
 
 export const MEMBER_ROLES = ['owner', 'manager', 'member'] as const;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
@@ -382,27 +416,43 @@ export interface VelocityRow {
   firstTimeRate: number | null;
   /** The work delivered, in typical hours for the tasks' sizes. */
   workHours: number;
-  /** 0–100: on time (70%) and approved first time (30%), eased toward the team's score when there are only a few tasks. Null with nothing executed. */
-  fairScore: number | null;
+  /** Work delivered, weighted by complexity: each task's typical hours, less a little when it was late or sent back. */
+  impact: number;
+  /** 0–100: impact relative to the top person in view. Null with nothing executed. */
+  impactScore: number | null;
+  /** How many tasks of each size they executed. */
+  sizeMix: Record<TaskSize, number>;
   openNow: number;
   blockedNow: number;
 }
 
 export interface VelocityResponse {
   windowDays: number;
+  /** The one day in view (YYYY-MM-DD, workspace time), or null for the whole window. */
+  day: string | null;
+  /** Only tasks of this size, or null for every size. */
+  size: TaskSize | null;
+  timezone: string;
+  /** Executed tasks in view whose size was estimated from their words (nobody set one). */
+  estimated: number;
+  /** The earliest day that can be picked (the plan keeps this much history). */
+  firstDay: string;
+  /** Days (since `firstDay`) with work executed, for marking the calendar. */
+  activeDays: string[];
   team: {
     completed: number;
     avgHoursToGreen: number | null;
     onTimeRate: number | null;
     firstTimeRate: number | null;
     workHours: number;
+    impact: number;
     openNow: number;
     blockedNow: number;
     awaitingAudit: number;
   };
   rows: VelocityRow[];
-  /** Completed per day, oldest first. */
-  daily: Array<{ date: string; completed: number }>;
+  /** Executed per day (workspace time), oldest first, with the complexity-weighted work. */
+  daily: Array<{ date: string; completed: number; workHours: number }>;
 }
 
 export interface StandupBrief {

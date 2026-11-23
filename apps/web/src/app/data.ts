@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AuditFilters,
   AuditsResponse,
@@ -7,6 +7,7 @@ import type {
   HistoryResponse,
   NotificationsResponse,
   TaskFilters,
+  TaskSize,
   Department,
   Entitlements,
   IntegrationsOverview,
@@ -71,8 +72,22 @@ export function useFeed(limit = 60) {
   });
 }
 
-export function useVelocity(days: number) {
-  return useQuery({ queryKey: ['velocity', days], queryFn: () => api.get<VelocityResponse>(`/metrics/velocity?days=${days}`) });
+/** Owner-only Insights: a window of days, optionally one day and one task size. */
+export function useVelocity(days: number, opts: { day?: string | null; size?: TaskSize | null; enabled?: boolean } = {}) {
+  const q = toQuery({ days, day: opts.day ?? undefined, size: opts.size ?? undefined });
+  return useQuery({ queryKey: ['velocity', days, opts.day ?? null, opts.size ?? null], queryFn: () => api.get<VelocityResponse>(`/metrics/velocity?${q}`), placeholderData: keepPreviousData, enabled: opts.enabled ?? true });
+}
+
+/** Sizes every task nobody sized (AI when it's set up), so complexity counts in Insights. */
+export function useSizeTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ sized: number; remaining: number; method: 'ai' | 'rules' }>('/metrics/size-tasks', {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['velocity'] });
+      void qc.invalidateQueries({ queryKey: ['task'] });
+    },
+  });
 }
 
 export function useStandup() {

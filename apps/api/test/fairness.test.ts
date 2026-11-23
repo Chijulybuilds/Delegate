@@ -59,49 +59,105 @@ describe('judging a delivery fairly', () => {
 });
 
 describe('the leaderboard', () => {
-  it('ranks by the fair score, shows work done by size, and eases small samples toward the team', async () => {
+  const config = loadConfig({ NODE_ENV: 'test', SUPABASE_URL: '', ADMIN_EMAIL: '', CRON_SECRET: 'x' });
+  async function setup(scenario?: (store: MemoryStore, add: (assigneeId: string, size: Task['size'], hours: number, i: number, title?: string) => void) => void) {
     const store = new MemoryStore();
     await seedDemo(store);
-    const app = createApp({ config: loadConfig({ NODE_ENV: 'test', SUPABASE_URL: '', ADMIN_EMAIL: '', CRON_SECRET: 'x' }), store });
-    const token = (await request(app).post('/api/auth/demo').send({ personaId: 'demo-ada' }).expect(200)).body.token as string;
-    const v = (await request(app).get('/api/metrics/velocity?days=30').set({ Authorization: `Bearer ${token}` }).expect(200)).body as VelocityResponse;
-
-    const scored = v.rows.filter((r) => r.fairScore !== null);
-    expect(scored.length).toBeGreaterThan(2);
-    for (let i = 1; i < scored.length; i++) expect(scored[i - 1]!.fairScore!).toBeGreaterThanOrEqual(scored[i]!.fairScore!);
-    // Nobody with work done sits below someone with none.
-    const firstEmpty = v.rows.findIndex((r) => r.fairScore === null);
-    if (firstEmpty >= 0) expect(v.rows.slice(firstEmpty).every((r) => r.fairScore === null)).toBe(true);
-    // Work done adds up the sizes, not the count.
-    expect(v.team.workHours).toBeGreaterThan(v.team.completed * 0.25);
-    for (const r of scored) {
-      expect(r.fairScore!).toBeGreaterThanOrEqual(0);
-      expect(r.fairScore!).toBeLessThanOrEqual(100);
+    if (scenario) {
+      for (const t of [...store.tasks.values()]) store.tasks.delete(t.id);
+      const orgId = [...store.orgs.values()][0]!.id;
+      const base = Date.now() - 5 * 24 * H;
+      scenario(store, (assigneeId, size, hours, i, title = 'x') => {
+        const created = new Date(base + i * 4 * H).toISOString();
+        const id = `${assigneeId}-${i}`;
+        store.tasks.set(id, { ...task({ size, doneAfter: 0 }), id, title, orgId, seq: 1000 + store.tasks.size, assigneeId, status: 'approved', approvedAt: created, approvedById: 'demo-ada', createdAt: created, startedAt: created, submittedAt: new Date(Date.parse(created) + hours * H).toISOString(), updatedAt: created });
+      });
     }
+    const app = createApp({ config, store });
+    const login = async (p: string) => (await request(app).post('/api/auth/demo').send({ personaId: p }).expect(200)).body.token as string;
+    const ada = await login('demo-ada');
+    const get = async (query: Record<string, string> = {}, token = ada, status = 200) => (await request(app).get('/api/metrics/velocity').query({ days: '14', ...query }).set({ Authorization: `Bearer ${token}` }).expect(status)).body as VelocityResponse;
+    return { store, app, login, ada, get };
+  }
+
+  it('weighs complexity: a few day-long video edits outrank many quick calls; two easy tasks don’t top the board', async () => {
+    const { get } = await setup((_store, add) => {
+      for (let i = 0; i < 25; i++) add('demo-maya', 'xs', 1, i); // 25 quick calls, each within the hour
+      for (let i = 0; i < 5; i++) add('demo-sara', 'l', 20, i); // 5 video edits, each next morning
+      for (let i = 0; i < 2; i++) add('demo-leo', 'xs', 1, i); // two easy tasks
+    });
+    const v = await get();
+    expect(v.rows.map((r) => r.userId).slice(0, 3)).toEqual(['demo-sara', 'demo-maya', 'demo-leo']);
+    const [sara, maya, leo] = v.rows;
+    expect(sara!.impactScore).toBe(100);
+    expect(sara!.workHours).toBe(30); // 5 × Large (6h)
+    expect(maya!.workHours).toBe(6.3); // 25 × Quick (15 min)
+    expect(leo!.impactScore).toBeLessThan(5);
+    expect(sara!.sizeMix).toMatchObject({ l: 5, xs: 0 });
+    expect(maya!.sizeMix).toMatchObject({ xs: 25 });
+    // Nobody with nothing executed sits above someone with work done.
+    expect(v.rows.slice(3).every((r) => r.impactScore === null)).toBe(true);
   });
 
-  it('two people judged by their own work: many quick tasks vs. a few big ones, both on time, score alike', async () => {
-    const store = new MemoryStore();
-    await seedDemo(store);
-    // Wipe history so only this scenario counts.
-    for (const t of [...store.tasks.values()]) store.tasks.delete(t.id);
-    const base = Date.now() - 5 * 24 * H;
-    const add = (assigneeId: string, size: Task['size'], hours: number, i: number) => {
-      const created = new Date(base + i * 6 * H).toISOString();
-      const id = `${assigneeId}-${i}`;
-      store.tasks.set(id, { ...task({ size, doneAfter: 0 }), id, orgId: [...store.orgs.values()][0]!.id, seq: 1000 + store.tasks.size, assigneeId, status: 'approved', approvedAt: created, approvedById: 'demo-ada', createdAt: created, startedAt: created, submittedAt: new Date(Date.parse(created) + hours * H).toISOString(), updatedAt: created });
-    };
-    for (let i = 0; i < 12; i++) add('demo-maya', 'xs', 1, i); // calls and texts, each within the hour
-    for (let i = 0; i < 3; i++) add('demo-sara', 'l', 20, i); // video edits, each next morning
-    const app = createApp({ config: loadConfig({ NODE_ENV: 'test', SUPABASE_URL: '', ADMIN_EMAIL: '', CRON_SECRET: 'x' }), store });
-    const token = (await request(app).post('/api/auth/demo').send({ personaId: 'demo-ada' }).expect(200)).body.token as string;
-    const v = (await request(app).get('/api/metrics/velocity?days=14').set({ Authorization: `Bearer ${token}` }).expect(200)).body as VelocityResponse;
+  it('late or sent-back work counts, a little less', async () => {
+    const { get } = await setup((_store, add) => {
+      add('demo-maya', 'l', 20, 0); // on time
+      add('demo-sara', 'l', 60, 0); // a Large task, 60h without a deadline: late
+    });
+    const v = await get();
     const maya = v.rows.find((r) => r.userId === 'demo-maya')!;
     const sara = v.rows.find((r) => r.userId === 'demo-sara')!;
-    expect(maya.fairScore).toBe(100);
-    expect(sara.fairScore).toBe(100); // 20h vs 1h, but a Large task the next morning is on time
-    expect(maya.avgHoursToGreen).toBeLessThan(sara.avgHoursToGreen!);
-    expect(sara.workHours).toBe(18); // 3 × Large (6h)
-    expect(maya.workHours).toBe(3); // 12 × Quick (15 min)
+    expect(maya.impact).toBe(6);
+    expect(sara.impact).toBe(4.5);
+    expect(sara.onTimeRate).toBe(0);
+  });
+
+  it('a size filter compares people on that kind of work only; unsized tasks are estimated from their words', async () => {
+    const { get } = await setup((_store, add) => {
+      add('demo-maya', null, 1, 0, 'Call the pastor about Sunday');
+      add('demo-maya', null, 1, 1, 'Text the choir the new time');
+      add('demo-sara', null, 20, 2, 'Edit the 1-hour conference video');
+    });
+    const all = await get();
+    expect(all.estimated).toBe(3);
+    expect(all.rows[0]!.userId).toBe('demo-sara');
+    const quick = await get({ size: 'xs' });
+    expect(quick.size).toBe('xs');
+    expect(quick.rows[0]!.userId).toBe('demo-maya');
+    expect(quick.rows.find((r) => r.userId === 'demo-sara')!.completed).toBe(0);
+  });
+
+  it('a picked day shows just that day’s numbers, for any day the plan keeps', async () => {
+    const { get } = await setup();
+    const v = await get({ days: '7' });
+    expect(v.firstDay < v.daily[0]!.date).toBe(true); // the plan keeps 30 days; the chart shows 7
+    expect(v.activeDays.length).toBeGreaterThan(5);
+    const busy = v.activeDays[0]!; // older than the chart's window
+    const day = await get({ days: '7', day: busy });
+    expect(day.day).toBe(busy);
+    expect(day.team.completed).toBeGreaterThan(0);
+    expect(day.rows.filter((r) => r.impactScore !== null).length).toBe(day.rows.filter((r) => r.completed > 0).length);
+    expect(day.team.completed).toBeLessThan(v.team.completed + 5);
+    await get({ day: '2001-01-01' }, undefined, 400);
+  });
+
+  it('only the owner sees Insights', async () => {
+    const { get, login, app } = await setup();
+    const kemi = await login('demo-kemi'); // a manager
+    const tunde = await login('demo-tunde');
+    await get({}, kemi, 403);
+    await get({}, tunde, 403);
+    await request(app).get('/api/standup').set({ Authorization: `Bearer ${tunde}` }).expect(403);
+    await request(app).post('/api/metrics/size-tasks').set({ Authorization: `Bearer ${kemi}` }).expect(403);
+  });
+
+  it('sizes the tasks nobody sized (word rules without AI), and they stay sized', async () => {
+    const { store, app, ada } = await setup();
+    const t = [...store.tasks.values()][0]!;
+    store.tasks.set(t.id, { ...t, size: null, title: 'Call the venue manager' });
+    const res = (await request(app).post('/api/metrics/size-tasks').set({ Authorization: `Bearer ${ada}` }).expect(200)).body;
+    expect(res).toMatchObject({ method: 'rules', remaining: 0 });
+    expect(res.sized).toBeGreaterThanOrEqual(1);
+    expect(store.tasks.get(t.id)!.size).toBe('xs');
   });
 });

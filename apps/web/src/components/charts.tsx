@@ -30,6 +30,8 @@ export function ColumnChart({
   height = 180,
   color = 'var(--color-ink)',
   emptyText = 'No data in this period yet',
+  selected = null,
+  onSelect,
 }: {
   data: Array<{ label: string; value: number; tooltipLabel?: string }>;
   unit: string;
@@ -37,6 +39,10 @@ export function ColumnChart({
   height?: number;
   color?: string;
   emptyText?: string;
+  /** The highlighted column (others fade). */
+  selected?: number | null;
+  /** Makes columns clickable (click the picked one again to clear). */
+  onSelect?: (index: number | null) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const empty = data.every((d) => d.value === 0);
@@ -67,7 +73,12 @@ export function ColumnChart({
               return (
                 <div
                   key={d.label}
-                  className="relative flex h-full flex-1 items-end justify-center"
+                  className={cx('relative flex h-full flex-1 items-end justify-center', onSelect && 'cursor-pointer')}
+                  onClick={onSelect ? () => onSelect(selected === i ? null : i) : undefined}
+                  onKeyDown={onSelect ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSelect(selected === i ? null : i)) : undefined}
+                  role={onSelect ? 'button' : undefined}
+                  aria-pressed={onSelect ? selected === i : undefined}
+                  data-testid={onSelect ? 'chart-day' : undefined}
                   onMouseEnter={() => setHover(i)}
                   onMouseLeave={() => setHover(null)}
                   onFocus={() => setHover(i)}
@@ -75,10 +86,10 @@ export function ColumnChart({
                   tabIndex={0}
                   aria-label={`${d.tooltipLabel ?? d.label}: ${d.value} ${unit}`}
                 >
-                  {hover === i && <div className="absolute inset-y-0 left-0 right-0 rounded-md bg-ink/[0.04]" />}
+                  {(hover === i || selected === i) && <div className={cx('absolute inset-y-0 left-0 right-0 rounded-md', selected === i ? 'bg-ink/[0.07]' : 'bg-ink/[0.04]')} />}
                   <motion.div
                     className="relative w-full max-w-6 rounded-t-[4px]"
-                    style={{ background: color, opacity: hover === null || hover === i ? 1 : 0.45 }}
+                    style={{ background: color, opacity: hover !== null ? (hover === i ? 1 : 0.45) : selected !== null ? (selected === i ? 1 : 0.3) : 1 }}
                     initial={{ height: 0 }}
                     animate={{ height: `${h}%` }}
                     transition={{ duration: 0.7, ease: EASE, delay: i * 0.02 }}
@@ -98,7 +109,7 @@ export function ColumnChart({
       </div>
       <div className="ml-7 mt-2 flex gap-[2px] text-[0.625rem] text-faint">
         {data.map((d, i) => (
-          <span key={d.label} className="flex-1 text-center">
+          <span key={d.label} className={cx('flex-1 text-center', selected === i && 'font-semibold text-ink')}>
             {data.length <= 14 || i % 2 === 0 ? d.label : ''}
           </span>
         ))}

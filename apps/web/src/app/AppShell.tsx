@@ -16,7 +16,7 @@ const NAV = [
   { to: '/app/recall', label: 'Recall', icon: RotateCcw },
   { to: '/app/audits', label: 'Audits', icon: ShieldCheck, ownerOnly: true },
   { to: '/app/activity', label: 'Activity', icon: Activity },
-  { to: '/app/insights', label: 'Insights', icon: BarChart3 },
+  { to: '/app/insights', label: 'Insights', icon: BarChart3, ownerOnly: true },
   { to: '/app/playbooks', label: 'Playbooks', icon: Repeat2 },
   { to: '/app/team', label: 'Team', icon: Users },
   { to: '/app/settings', label: 'Settings', icon: Settings },

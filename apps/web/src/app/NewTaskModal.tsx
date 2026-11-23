@@ -1,4 +1,4 @@
-import { isManagerRole, SIZE_META, type TaskPriority, type TaskSize } from '@delegate/shared';
+import { estimateSize, isManagerRole, SIZE_META, type TaskPriority, type TaskSize } from '@delegate/shared';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '../components/Toast';
 import { Button, DateTimePicker, Field, Input, Modal, Select, Textarea } from '../components/ui';
@@ -21,6 +21,7 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
   const [size, setSize] = useState<TaskSize>('m');
   const [due, setDue] = useState(() => defaultDue());
   const [dueTouched, setDueTouched] = useState(false);
+  const [sizeTouched, setSizeTouched] = useState(false);
   const sized = ws.features?.taskSize !== false;
 
   useEffect(() => {
@@ -33,8 +34,19 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
       setSize('m');
       setDue(defaultDue());
       setDueTouched(false);
+      setSizeTouched(false);
     }
   }, [open, isManager, ws.members, ws.me.userId]);
+
+  // Until a size is picked by hand, it follows the words ("Call…" is Quick, "Edit the video…" Large),
+  // and the suggested deadline follows the size.
+  useEffect(() => {
+    if (!open || sizeTouched || !title.trim()) return;
+    const guess = estimateSize(title, description);
+    if (guess === size) return;
+    setSize(guess);
+    if (!dueTouched) setDue(defaultDue(guess));
+  }, [open, title, description, sizeTouched, dueTouched, size]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -76,11 +88,12 @@ export function NewTaskModal({ open, onClose, ws }: { open: boolean; onClose: ()
             <Select value={priority} onChange={setPriority} options={priorityOptions} aria-label="Priority" />
           </Field>
           {sized && (
-            <Field label="Size">
+            <Field label="Size" hint={!sizeTouched && title.trim() ? 'Guessed from the title. Change it if it’s bigger or smaller.' : undefined}>
               <Select
                 value={size}
                 onChange={(v) => {
                   setSize(v);
+                  setSizeTouched(true);
                   if (!dueTouched) setDue(defaultDue(v));
                 }}
                 options={sizeOptions}
