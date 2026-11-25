@@ -295,11 +295,20 @@ export class SupabaseStore implements Store {
   }
 
   // Tasks ------------------------------------------------------------------
-  async listTasks(query: { orgId?: string; statuses?: TaskStatus[] }) {
-    let q = this.db.from('tasks').select('*').order('created_at', { ascending: false }).limit(5000);
-    if (query.orgId) q = q.eq('org_id', query.orgId);
-    if (query.statuses) q = q.in('status', query.statuses);
-    return rows(await q, 'listing tasks').map(toTask);
+  async listTasks(query: { orgId?: string; statuses?: TaskStatus[]; createdSince?: string }) {
+    // Supabase returns at most 1,000 rows a request: read page by page so nothing is silently cut off.
+    const PAGE = 1000;
+    const out: Row[] = [];
+    for (let from = 0; from < 50 * PAGE; from += PAGE) {
+      let q = this.db.from('tasks').select('*').order('created_at', { ascending: false }).order('id', { ascending: true }).range(from, from + PAGE - 1);
+      if (query.orgId) q = q.eq('org_id', query.orgId);
+      if (query.statuses) q = q.in('status', query.statuses);
+      if (query.createdSince) q = q.gte('created_at', query.createdSince);
+      const batch = rows(await q, 'listing tasks');
+      out.push(...batch);
+      if (batch.length < PAGE) break;
+    }
+    return out.map(toTask);
   }
   async getTask(id: string) {
     const data = check(await this.db.from('tasks').select('*').eq('id', id).maybeSingle(), 'loading task');
@@ -369,6 +378,13 @@ export class SupabaseStore implements Store {
   }
   async listProofsForOrg(orgId: string) {
     return rows(await this.db.from('task_proofs').select('*').eq('org_id', orgId), 'listing proofs').map((r) => camel<TaskProof>(r));
+  }
+  async listProofsForTasks(taskIds: string[]) {
+    const out: Row[] = [];
+    for (let i = 0; i < taskIds.length; i += 150) {
+      out.push(...rows(await this.db.from('task_proofs').select('*').in('task_id', taskIds.slice(i, i + 150)), 'listing proofs'));
+    }
+    return out.map((r) => camel<TaskProof>(r));
   }
   async insertProof(input: Omit<TaskProof, 'id' | 'createdAt'>) {
     return camel<TaskProof>(one(await this.db.from('task_proofs').insert(snake(input)).select('*').single(), 'saving proof'));

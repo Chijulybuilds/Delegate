@@ -1,7 +1,7 @@
 import { availableActions, canReassign, canRecall, isManagerRole, LANES, STATUS_META, taskRef, type ProofSource, type Task, type TaskProof, type TaskSource, type TransitionAction } from '@delegate/shared';
 import { AlarmClock, ArrowRight, ArrowRightLeft, BellRing, CirclePlay, History, OctagonPause, Pause, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { EmptyLaneArt } from '../components/EmptyLaneArt';
 import { useToast } from '../components/Toast';
@@ -115,7 +115,10 @@ export default function BoardPage() {
   }, [board.data, scope, dept, person, meId, focus, isManager]);
   const navigate = useNavigate();
   // For the owner, History includes everything from earlier days that still needs action.
-  const earlier = (board.data?.earlier.unfinished ?? 0) + (board.data?.earlier.awaitingAudit ?? 0);
+  // Unfinished work from earlier days waits on History (executed work stays here until it's audited).
+  const earlier = board.data?.earlier.unfinished ?? 0;
+  const dayStart = board.data?.day.start ?? null;
+  const sinceFmt = useMemo(() => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: board.data?.day.timezone }), [board.data?.day.timezone]);
   // Blocked work (any day) is off the lanes, on History → Blocked.
   const blocked = board.data?.blocked ?? [];
   const waitingOnMe = blocked.filter((t) => t.waitingOnId === meId);
@@ -228,7 +231,6 @@ export default function BoardPage() {
             In History:{' '}
             {[
               board.data.earlier.unfinished > 0 && `${board.data.earlier.unfinished} unfinished`,
-              board.data.earlier.awaitingAudit > 0 && `${board.data.earlier.awaitingAudit} awaiting audit`,
               blocked.length > 0 && `${blocked.length} blocked`,
             ]
               .filter(Boolean)
@@ -304,6 +306,8 @@ export default function BoardPage() {
         onQuick={quick}
         busyId={transition.isPending ? (transition.variables?.id ?? null) : null}
         emptyOpenHint={isManager && !focus ? 'No tasks yet today' : 'No tasks here yet'}
+        // Executed work from earlier days stays on Today until it's audited: say since when.
+        dayOf={(t) => (dayStart && t.createdAt < dayStart ? `Since ${sinceFmt.format(new Date(t.createdAt))}` : null)}
         onReassign={isOwner ? setReassigning : undefined}
       />
 
@@ -338,6 +342,7 @@ export function BoardLanes({
   dayOf,
   recall,
   onReassign,
+  perLane,
 }: {
   tasks: Task[];
   ws: WorkspaceData;
@@ -348,6 +353,8 @@ export function BoardLanes({
   onQuick: (task: Task, action: TransitionAction) => void;
   busyId: string | null;
   emptyOpenHint?: string;
+  /** Long boards (History) show this many cards per lane at first, with "Show more". */
+  perLane?: number;
   /** When the board spans several days, each card shows the day it was given out. */
   dayOf?: (task: Task) => string | null;
   /** On History: cards that may be recalled get a "Recall to today" button. */
@@ -357,6 +364,10 @@ export function BoardLanes({
 }) {
   const isOwner = ws.me.role === 'owner';
   const viewer = { userId: ws.me.userId, role: ws.me.role };
+  const handlers = useCardHandlers({ onOpen, onQuick, recall, onReassign });
+  const [shown, setShown] = useState<Record<string, number>>({});
+  // Cards glide between lanes on a small board; a long one skips that (it's costly to measure).
+  const lively = tasks.length <= 60;
   return (
     <LayoutGroup>
       <div className="grid gap-3 px-4 pb-10 sm:px-8 md:grid-cols-2 xl:grid-cols-4">
@@ -377,8 +388,9 @@ export function BoardLanes({
                 </span>
               </header>
               <div className="relative flex flex-1 flex-col gap-2">
-                <AnimatePresence mode="popLayout" initial={false}>
-                  {laneTasks.map((t) => (
+                {(() => {
+                  const limit = perLane ? (shown[lane.id] ?? perLane) : laneTasks.length;
+                  const cards = laneTasks.slice(0, limit).map((t) => (
                     <TaskCard
                       key={t.id}
                       task={t}
@@ -387,14 +399,35 @@ export function BoardLanes({
                       verifiedBy={verified[t.id] ?? null}
                       news={news[t.id]?.count ?? 0}
                       day={dayOf?.(t) ?? null}
-                      onRecall={recall && canRecall(viewer, t, recall.dayStart) ? () => recall.onRecall(t) : undefined}
-                      onReassign={onReassign && canReassign(viewer, t) ? () => onReassign(t) : undefined}
-                      onOpen={() => onOpen(t.id)}
-                      onQuick={(a) => onQuick(t, a)}
+                      recallable={!!recall && canRecall(viewer, t, recall.dayStart)}
+                      reassignable={!!onReassign && canReassign(viewer, t)}
+                      handlers={handlers}
                       busy={busyId === t.id}
+                      lively={lively}
                     />
-                  ))}
-                </AnimatePresence>
+                  ));
+                  const more = laneTasks.length - limit;
+                  return (
+                    <>
+                      {lively ? (
+                        <AnimatePresence mode="popLayout" initial={false}>
+                          {cards}
+                        </AnimatePresence>
+                      ) : (
+                        cards
+                      )}
+                      {more > 0 && (
+                        <button
+                          onClick={() => setShown((prev) => ({ ...prev, [lane.id]: limit + (perLane ?? 0) }))}
+                          className="rounded-xl px-2 py-2 text-xs font-medium text-mute transition-colors hover:bg-paper hover:text-ink"
+                          data-testid={`lane-more-${lane.id}`}
+                        >
+                          Show {Math.min(more, perLane ?? more)} more · {more} not shown
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
                 {laneTasks.length === 0 && (
                   <motion.div className="flex flex-1 flex-col items-center justify-center gap-2 px-2 py-8 text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
                     <EmptyLaneArt className="w-24 text-faint" />
@@ -443,6 +476,7 @@ export function BlockedBoard({
   emptyHint?: string;
 }) {
   const viewer = { userId: ws.me.userId, role: ws.me.role };
+  const handlers = useCardHandlers({ onOpen, onQuick, recall, onReassign });
   return (
     <LayoutGroup>
       <section className="relative mx-4 mb-10 flex min-h-[260px] flex-col overflow-hidden rounded-3xl bg-milk-2/70 p-2.5 sm:mx-8" aria-label="Blocked" data-testid="lane-blocked">
@@ -473,11 +507,11 @@ export function BlockedBoard({
                   verifiedBy={null}
                   news={news[t.id]?.count ?? 0}
                   day={dayOf(t)}
-                  onRecall={recall && canRecall(viewer, t, recall.dayStart) ? () => recall.onRecall(t) : undefined}
-                  onReassign={onReassign && canReassign(viewer, t) ? () => onReassign(t) : undefined}
-                  onOpen={() => onOpen(t.id)}
-                  onQuick={(a) => onQuick(t, a)}
+                  recallable={!!recall && canRecall(viewer, t, recall.dayStart)}
+                  reassignable={!!onReassign && canReassign(viewer, t)}
+                  handlers={handlers}
                   busy={busyId === t.id}
+                  lively={tasks.length <= 60}
                 />
               ))}
             </AnimatePresence>
@@ -488,18 +522,41 @@ export function BlockedBoard({
   );
 }
 
-function TaskCard({
+/** What a card can ask its board to do. One stable object per board, so unchanged cards don't redraw. */
+interface CardHandlers {
+  open: (task: Task) => void;
+  quick: (task: Task, action: TransitionAction) => void;
+  recall: (task: Task) => void;
+  reassign: (task: Task) => void;
+}
+
+function useCardHandlers(props: { onOpen: (id: string) => void; onQuick: (task: Task, action: TransitionAction) => void; recall?: { onRecall: (task: Task) => void }; onReassign?: (task: Task) => void }): CardHandlers {
+  const latest = useRef(props);
+  latest.current = props;
+  return useMemo(
+    () => ({
+      open: (t) => latest.current.onOpen(t.id),
+      quick: (t, a) => latest.current.onQuick(t, a),
+      recall: (t) => latest.current.recall?.onRecall(t),
+      reassign: (t) => latest.current.onReassign?.(t),
+    }),
+    [],
+  );
+}
+
+// Memoised: the board refreshes every few seconds, and only cards whose task changed should redraw.
+const TaskCard = memo(function TaskCard({
   task,
   ws,
   aiVerdict,
   verifiedBy,
   news = 0,
   day = null,
-  onRecall,
-  onReassign,
-  onOpen,
-  onQuick,
+  recallable,
+  reassignable,
+  handlers,
   busy,
+  lively,
 }: {
   task: Task;
   ws: WorkspaceData;
@@ -509,14 +566,19 @@ function TaskCard({
   news?: number;
   /** The day it was given out (shown when a board spans several days). */
   day?: string | null;
-  /** History: bring this task back to today. */
-  onRecall?: () => void;
-  /** Hand it to someone else (the owner's boards). */
-  onReassign?: () => void;
-  onOpen: () => void;
-  onQuick: (a: TransitionAction) => void;
+  /** History: it can be brought back to today. */
+  recallable: boolean;
+  /** The owner's boards: it can be handed to someone else. */
+  reassignable: boolean;
+  handlers: CardHandlers;
   busy: boolean;
+  /** Animate moves between lanes (small boards only). */
+  lively: boolean;
 }) {
+  const onOpen = () => handlers.open(task);
+  const onQuick = (a: TransitionAction) => handlers.quick(task, a);
+  const onRecall = recallable ? () => handlers.recall(task) : undefined;
+  const onReassign = reassignable ? () => handlers.reassign(task) : undefined;
   const assignee = ws.members.find((m) => m.userId === task.assigneeId);
   const dept = ws.departments.find((d) => d.id === task.departmentId);
   const actions = availableActions(task, { userId: ws.me.userId, role: ws.me.role });
@@ -533,9 +595,9 @@ function TaskCard({
 
   return (
     <motion.article
-      layout
-      layoutId={`task-${task.id}`}
-      initial={{ opacity: 0, scale: 0.96 }}
+      layout={lively}
+      layoutId={lively ? `task-${task.id}` : undefined}
+      initial={lively ? { opacity: 0, scale: 0.96 } : false}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.45, ease: EASE }}
@@ -678,7 +740,7 @@ function TaskCard({
       )}
     </motion.article>
   );
-}
+});
 
 /** The red count on a task card: new messages and updates about this task, cleared when it's opened. */
 export function NewsBadge({ count }: { count: number }) {

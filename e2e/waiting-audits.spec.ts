@@ -23,6 +23,10 @@ test.describe('History and Audits', () => {
 
     await loginAs(page, 'demo-ada');
     await expect(page.getByTestId('earlier-days')).toContainText('unfinished');
+    // Executed work from earlier days stays on Today until it's audited.
+    const qa = page.getByTestId('lane-done').locator(card(page, 'QA release 3.4 on Android'));
+    await expect(qa).toBeVisible();
+    await expect(qa.getByTestId('task-day')).toContainText('Since');
     await page.getByTestId('glance-waitingOnMe').click();
     await expect(page).toHaveURL(/\/app\/waiting/);
     await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
@@ -36,7 +40,8 @@ test.describe('History and Audits', () => {
     // Step to yesterday, then the day before.
     await page.getByTestId('day-prev').click();
     await expect(page.getByTestId('day-title')).toContainText('Yesterday');
-    await expect(page.getByTestId('lane-done').locator(card(page, 'QA release 3.4 on Android'))).toBeVisible();
+    await expect(page.getByTestId('lane-done')).toBeVisible();
+    await expect(card(page, 'QA release 3.4 on Android')).toHaveCount(0); // executed, not yet audited: it waits on Today
     await expect(card(page, 'Integrate SSO for enterprise pilot')).toHaveCount(0); // blocked: under Blocked, not on the lanes
     await expect(card(page, 'Renew domain and SSL certificates')).toHaveCount(0);
     await page.getByTestId('day-prev').click();

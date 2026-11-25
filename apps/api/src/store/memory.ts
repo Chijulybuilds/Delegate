@@ -221,9 +221,9 @@ export class MemoryStore implements Store {
   }
 
   // Tasks ------------------------------------------------------------------
-  async listTasks(query: { orgId?: string; statuses?: TaskStatus[] }) {
+  async listTasks(query: { orgId?: string; statuses?: TaskStatus[]; createdSince?: string }) {
     return [...this.tasks.values()]
-      .filter((t) => (!query.orgId || t.orgId === query.orgId) && (!query.statuses || query.statuses.includes(t.status)))
+      .filter((t) => (!query.orgId || t.orgId === query.orgId) && (!query.statuses || query.statuses.includes(t.status)) && (!query.createdSince || t.createdAt >= query.createdSince))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(clone);
   }
@@ -280,6 +280,10 @@ export class MemoryStore implements Store {
   }
   async listProofsForOrg(orgId: string) {
     return [...this.proofs.values()].filter((p) => p.orgId === orgId).map(clone);
+  }
+  async listProofsForTasks(taskIds: string[]) {
+    const ids = new Set(taskIds);
+    return [...this.proofs.values()].filter((p) => ids.has(p.taskId)).map(clone);
   }
   async insertProof(input: Omit<TaskProof, 'id' | 'createdAt'> & { createdAt?: string }) {
     const p: TaskProof = { ...input, id: uuid(), createdAt: input.createdAt ?? now() };

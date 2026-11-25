@@ -202,19 +202,29 @@ export class WorkspaceService {
   /* -------------------------------- Tasks --------------------------------- */
 
   /**
-   * Today's board. Every day starts empty: it shows only tasks given out today (in the workspace's
-   * time zone). Earlier days live on the History page; `earlier` counts what's still unfinished there.
+   * Today's board. Every day starts afresh: it shows the tasks given out today (in the workspace's
+   * time zone), plus executed work still waiting for its audit, whatever day it came from: that
+   * stays on Today until it's audited. Unfinished work from earlier days moves to History, where
+   * `earlier` counts it; blocked work from any day waits on History → Blocked.
    */
   async listBoard(ctx: Ctx): Promise<BoardResponse> {
     const org = await this.store.getOrg(ctx.orgId);
     const timezone = org?.timezone || 'UTC';
     const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
-    const mine = (await this.store.listTasks({ orgId: ctx.orgId })).filter((t) => canSeeTask(ctx, t));
-    const tasks = mine.filter((t) => t.createdAt >= dayStart);
+    // Only what the board can use: today's tasks and older ones still in play. The archive of
+    // audited work (most of it, after a while) is never loaded here.
+    const [todays, live] = await Promise.all([
+      this.store.listTasks({ orgId: ctx.orgId, createdSince: dayStart }),
+      this.store.listTasks({ orgId: ctx.orgId, statuses: ['open', 'in_progress', 'blocked', 'done'] }),
+    ]);
+    const mine = [...new Map([...live, ...todays].map((t) => [t.id, t])).values()]
+      .filter((t) => canSeeTask(ctx, t))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const carriedOver = (t: Task) => t.status === 'done' && !t.recalledToId;
+    const tasks = mine.filter((t) => t.createdAt >= dayStart || carriedOver(t));
     const before = mine.filter((t) => t.createdAt < dayStart);
-    const visible = new Set(tasks.map((t) => t.id));
-    // Latest AI verdict + verified source per task, so cards can badge without N+1 calls.
-    const proofs = (await this.store.listProofsForOrg(ctx.orgId)).filter((p) => visible.has(p.taskId));
+    // Latest AI verdict + verified source for executed and audited cards, without N+1 calls.
+    const proofs = await this.store.listProofsForTasks(tasks.filter((t) => t.status === 'done' || t.status === 'approved').map((t) => t.id));
     const aiVerdicts: Record<string, TaskProof['aiVerdict']> = {};
     const verified: Record<string, ProofSource> = {};
     for (const p of proofs.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
@@ -226,12 +236,10 @@ export class WorkspaceService {
       aiVerdicts,
       verified,
       day: { start: dayStart, timezone },
-      // Earlier days live on History; everyone sees their own (the owner sees all of them).
       earlier: {
         unfinished: before.filter((t) => !t.recalledToId && (t.status === 'open' || t.status === 'in_progress')).length,
-        awaitingAudit: isManagerRole(ctx.role) ? before.filter((t) => !t.recalledToId && t.status === 'done').length : 0,
+        awaitingAudit: before.filter(carriedOver).length,
       },
-      // Blocked work from any day waits on History → Blocked until it's unblocked or recalled.
       blocked: mine.filter((t) => t.status === 'blocked' && !t.recalledToId).sort((a, b) => (b.blockedAt ?? b.updatedAt).localeCompare(a.blockedAt ?? a.updatedAt)),
     };
   }
@@ -330,8 +338,11 @@ export class WorkspaceService {
     const timezone = org?.timezone || 'UTC';
     const dayStart = startOfDayInTz(new Date(), timezone).toISOString();
     const anyDay = f.status === 'blocked';
+    // Executed work waiting for its audit stays on Today, so the History board leaves it out
+    // (Recall and an explicit "Executed" filter still find it).
+    const keepExecuted = f.status === 'done' || !!f.recallable;
     const tasks = (await this.store.listTasks({ orgId: ctx.orgId })).filter(
-      (t) => (anyDay || t.createdAt < dayStart) && !t.recalledToId && canSeeTask(ctx, t) && (!f.recallable || canRecall(ctx, t, dayStart)),
+      (t) => (anyDay || t.createdAt < dayStart) && !t.recalledToId && (keepExecuted || t.status !== 'done') && canSeeTask(ctx, t) && (!f.recallable || canRecall(ctx, t, dayStart)),
     );
     const rows = this.filterRows(await this.describeTasks(ctx.orgId, tasks), f, (t) => t.createdAt, timezone);
     const start = (page - 1) * pageSize;

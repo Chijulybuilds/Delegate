@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import cors from 'cors';
 import express, { Router, type Express } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { createHash } from 'node:crypto';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
 import { requireMember, requireUser } from './auth/middleware.js';
 import { UserTokenVerifier } from './auth/tokens.js';
@@ -119,7 +120,20 @@ export function createApp(deps: AppDeps): Express & { services: Services } {
   app.use('/api/hooks', express.raw({ type: () => true, limit: '2mb' }), hookRoutes({ billing: s.billing, integrations: s.integrations }));
 
   app.use(express.json({ limit: '256kb' }));
-  app.use('/api', rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false }));
+  // Per signed-in person (a whole office often shares one internet address); per address otherwise.
+  app.use(
+    '/api',
+    rateLimit({
+      windowMs: 60_000,
+      limit: 600,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      keyGenerator: (req) => {
+        const auth = req.headers.authorization;
+        return auth ? `user:${createHash('sha256').update(auth).digest('base64url').slice(0, 32)}` : ipKeyGenerator(req.ip ?? '');
+      },
+    }),
+  );
 
   // Database readiness: probed at start-up and re-checked every 15 s while something is wrong, so
   // running a missing migration fixes sign-in without restarting. Until then every API call explains

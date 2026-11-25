@@ -134,7 +134,7 @@ export default function WaitingPage() {
         }
       />
 
-      <div className="z-20 space-y-3 border-b border-[var(--edge)] bg-milk/90 px-4 py-3 backdrop-blur-xl sm:px-8 lg:sticky lg:top-0 lg:bg-panel">
+      <div className="z-20 space-y-3 border-b border-[var(--edge)] bg-milk px-4 py-3 sm:px-8 lg:sticky lg:top-0 lg:bg-panel">
         {/* All tasks (the board) or Blocked; then the day: step back and forth, or pick a range */}
         <div className="flex flex-wrap items-center gap-2">
           <Segmented
@@ -239,6 +239,7 @@ export default function WaitingPage() {
             />
           ) : (
           <BoardLanes
+            perLane={24}
             tasks={tasks}
             ws={ws.data}
             aiVerdicts={{}}

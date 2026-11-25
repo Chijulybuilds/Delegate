@@ -95,7 +95,8 @@ export interface Store {
   createDepartment(input: Pick<Department, 'orgId' | 'name' | 'color'>): Promise<Department>;
 
   // Tasks
-  listTasks(query: { orgId?: string; statuses?: TaskStatus[] }): Promise<Task[]>;
+  /** Newest first. `createdSince` (ISO) keeps only tasks given out from then on. */
+  listTasks(query: { orgId?: string; statuses?: TaskStatus[]; createdSince?: string }): Promise<Task[]>;
   getTask(id: string): Promise<Task | null>;
   getTaskBySeq(orgId: string, seq: number): Promise<Task | null>;
   /** Throws HttpError 409 `duplicate_occurrence` when `occurrenceKey` was already used. */
@@ -109,6 +110,7 @@ export interface Store {
   // Proof of work + micro-chat
   listProofs(taskId: string): Promise<TaskProof[]>;
   listProofsForOrg(orgId: string): Promise<TaskProof[]>;
+  listProofsForTasks(taskIds: string[]): Promise<TaskProof[]>;
   insertProof(input: Omit<TaskProof, 'id' | 'createdAt'>): Promise<TaskProof>;
   listComments(taskId: string): Promise<TaskComment[]>;
   insertComment(input: Omit<TaskComment, 'id' | 'createdAt'>): Promise<TaskComment>;

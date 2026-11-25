@@ -24,7 +24,7 @@ import type {
   TransitionAction,
   VelocityResponse,
 } from '@delegate/shared';
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { getSupabase } from '../lib/supabase';
@@ -42,33 +42,56 @@ export interface WorkspaceData {
 export type BoardData = BoardResponse;
 
 const LIVE_MS = 5_000;
+/** With Supabase Realtime connected, changes arrive as they happen: polling is only a safety net. */
+const LIVE_MS_REALTIME = 30_000;
+
+let realtimeLive = false;
+const liveListeners = new Set<() => void>();
+function setRealtimeLive(on: boolean) {
+  if (realtimeLive === on) return;
+  realtimeLive = on;
+  for (const l of liveListeners) l();
+}
+/** True while this tab is subscribed to the workspace's Realtime channel. */
+function useRealtimeLive() {
+  return useSyncExternalStore(
+    (cb) => {
+      liveListeners.add(cb);
+      return () => liveListeners.delete(cb);
+    },
+    () => realtimeLive,
+  );
+}
 
 export function useWorkspace() {
   return useQuery({ queryKey: ['workspace'], queryFn: () => api.get<WorkspaceData>('/workspace'), staleTime: 30_000 });
 }
 
 export function useBoard() {
+  const live = useRealtimeLive();
   return useQuery({
     queryKey: ['tasks'],
     queryFn: () => api.get<BoardData>('/tasks'),
-    refetchInterval: LIVE_MS,
+    refetchInterval: live ? LIVE_MS_REALTIME : LIVE_MS,
   });
 }
 
 export function useTaskDetail(id: string | null) {
+  const live = useRealtimeLive();
   return useQuery({
     queryKey: ['task', id],
     queryFn: () => api.get<TaskDetail>(`/tasks/${id}`),
     enabled: !!id,
-    refetchInterval: id ? LIVE_MS : false,
+    refetchInterval: id ? (live ? LIVE_MS_REALTIME : LIVE_MS) : false,
   });
 }
 
 export function useFeed(limit = 60) {
+  const live = useRealtimeLive();
   return useQuery({
     queryKey: ['feed', limit],
     queryFn: () => api.get<{ events: LedgerEvent[] }>(`/feed?limit=${limit}`),
-    refetchInterval: LIVE_MS,
+    refetchInterval: live ? LIVE_MS_REALTIME : LIVE_MS,
   });
 }
 
@@ -177,23 +200,40 @@ export function useComment() {
 export function useRealtimeHeartbeat(orgId: string | undefined) {
   const { config, token } = useAuth();
   const invalidate = useInvalidateWork();
+  const qc = useQueryClient();
   useEffect(() => {
     if (!orgId || !token || config?.authMode !== 'supabase' || !config.supabaseUrl || !config.supabaseAnonKey) return;
     let cleanup: (() => void) | null = null;
     let active = true;
+    // One action writes a few ledger rows at once: refresh once for the burst, not once per row.
+    const touched = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      invalidate();
+      for (const id of touched) void qc.invalidateQueries({ queryKey: ['task', id] });
+      touched.clear();
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+    };
     getSupabase(config.supabaseUrl, config.supabaseAnonKey).then((sb) => {
       if (!active) return;
       sb.realtime.setAuth(token);
       const channel = sb
         .channel(`org-${orgId}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'task_events', filter: `org_id=eq.${orgId}` }, (payload) => {
-          invalidate((payload.new as { task_id?: string }).task_id ?? undefined);
+          const id = (payload.new as { task_id?: string }).task_id;
+          if (id) touched.add(id);
+          if (!timer) timer = setTimeout(flush, 600);
         })
-        .subscribe();
-      cleanup = () => sb.removeChannel(channel);
+        .subscribe((status) => setRealtimeLive(status === 'SUBSCRIBED'));
+      cleanup = () => {
+        setRealtimeLive(false);
+        void sb.removeChannel(channel);
+      };
     });
     return () => {
       active = false;
+      if (timer) clearTimeout(timer);
       cleanup?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,10 +256,11 @@ export function useIntegrations() {
 }
 
 export function useNotifications() {
+  const live = useRealtimeLive();
   return useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.get<NotificationsResponse>('/notifications'),
-    refetchInterval: 8_000,
+    refetchInterval: live ? LIVE_MS_REALTIME : 8_000,
   });
 }
 

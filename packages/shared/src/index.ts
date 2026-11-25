@@ -802,7 +802,10 @@ export interface BoardResponse {
   verified: Record<string, ProofSource>;
   /** Today in the workspace's time zone: the board shows tasks given out since `start`. */
   day: { start: string; timezone: string };
-  /** Earlier days (on History) that still need something, among the tasks the viewer can see. */
+  /**
+   * Earlier days, among the tasks the viewer can see: `unfinished` is waiting on History;
+   * `awaitingAudit` is executed work from earlier days, which stays on Today until it's audited.
+   */
   earlier: { unfinished: number; awaitingAudit: number };
   /** Every blocked task the viewer can see, from any day: they sit on History → Blocked, not in the lanes. */
   blocked: Task[];

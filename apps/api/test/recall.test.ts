@@ -20,9 +20,9 @@ beforeEach(async () => {
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const login = async (personaId: string) => (await request(app).post('/api/auth/demo').send({ personaId }).expect(200)).body.token as string;
 const board = async (token: string) => (await request(app).get('/api/tasks').set(auth(token)).expect(200)).body as BoardResponse;
-/** An earlier task by words in its title (as the owner sees History). */
+/** An earlier task by words in its title (as the owner finds it to recall). */
 async function earlier(owner: string, q: string) {
-  const rows = (await request(app).get('/api/history').query({ q }).set(auth(owner)).expect(200)).body.rows as Array<{ task: Task }>;
+  const rows = (await request(app).get('/api/history').query({ q, recallable: 'true' }).set(auth(owner)).expect(200)).body.rows as Array<{ task: Task }>;
   expect(rows).toHaveLength(1);
   return rows[0]!.task;
 }
@@ -157,5 +157,36 @@ describe('blocked tasks wait on History → Blocked', () => {
     expect((await board(leo)).blocked.map((t) => t.title)).toEqual(['Integrate SSO for enterprise pilot']);
     expect((await board(tunde)).blocked.map((t) => t.title)).toEqual(['Integrate SSO for enterprise pilot']);
     expect((await board(await login('demo-sara'))).blocked).toEqual([]);
+  });
+});
+
+describe('executed work stays on Today until it is audited', () => {
+  it('carries over from earlier days, stays out of History, and leaves once audited', async () => {
+    const ada = await login('demo-ada');
+    const qa = [...store.tasks.values()].find((t) => t.title.startsWith('QA release 3.4'))!; // executed yesterday, not audited
+    const b = await board(ada);
+    expect(qa.createdAt < b.day.start).toBe(true);
+    expect(b.tasks.map((t) => t.id)).toContain(qa.id);
+    expect(b.earlier.awaitingAudit).toBeGreaterThanOrEqual(1);
+    const history = (await request(app).get('/api/history').set(auth(ada)).expect(200)).body.rows as Array<{ task: Task }>;
+    expect(history.map((r) => r.task.id)).not.toContain(qa.id);
+    // Unfinished work from earlier days still moves to History.
+    expect(history.some((r) => r.task.status === 'open')).toBe(true);
+    expect(b.tasks.every((t) => t.createdAt >= b.day.start || t.status === 'done')).toBe(true);
+
+    // Once audited it leaves Today, and History has it (on its own day).
+    await request(app).post(`/api/tasks/${qa.id}/transitions`).set(auth(ada)).send({ action: 'approve' }).expect(200);
+    expect((await board(ada)).tasks.map((t) => t.id)).not.toContain(qa.id);
+    const after = (await request(app).get('/api/history').set(auth(ada)).expect(200)).body.rows as Array<{ task: Task }>;
+    expect(after.map((r) => r.task.id)).toContain(qa.id);
+  });
+
+  it('sent back for changes, it behaves like work in motion again', async () => {
+    const ada = await login('demo-ada');
+    const crm = [...store.tasks.values()].find((t) => t.title.startsWith('Clean up CRM'))!;
+    await request(app).post(`/api/tasks/${crm.id}/transitions`).set(auth(ada)).send({ action: 'request_changes', comment: 'Attach the merged IDs, please.' }).expect(200);
+    expect((await board(ada)).tasks.map((t) => t.id)).not.toContain(crm.id); // in motion, from yesterday: on History
+    const history = (await request(app).get('/api/history').set(auth(ada)).expect(200)).body.rows as Array<{ task: Task }>;
+    expect(history.find((r) => r.task.id === crm.id)?.task.status).toBe('in_progress');
   });
 });
